@@ -1,6 +1,6 @@
 # ur-simulation
 
-Repository for Classic and Reinforcement learning based control of the UR7e
+Repository for control methods of a simulated UR7e
 
 ## Installation
 
