@@ -4,8 +4,11 @@ Repository for control methods of a simulated UR7e
 
 ## Installation
 
+This repository is compatible with python > 3.9
+
 ```bash
-pip install -e .
+git clone https://github.com/theyseemeRobin/control_methods_simulation.git
+pip install -e control_methods_simulation/
 ```
 
 ## Usage
