@@ -42,6 +42,9 @@ def create_scene():
     )
     robot.sim.create_plane(0)
 
+    # Spawn tray or smt idk
+    tray_id = p.loadURDF("tray/traybox.urdf", basePosition=[-0.7, 0.5, 0])
+
     # add a cube to simulation
     cube_size = 0.01
 
@@ -56,21 +59,22 @@ def create_scene():
     )
 
     cube_id = p.createMultiBody(
-        baseMass=1,
+        baseMass=0.2,
         baseCollisionShapeIndex=collision_shape,
         baseVisualShapeIndex=visual_shape,
         basePosition=[0.7, 0.5, 0.1]
     )
 
-    return robot, cube_id
+    return robot, cube_id, tray_id
 
 
 def run():
     # Initialize simulation and create the scene
-    robot, cube = create_scene()
+    robot, cube, tray = create_scene()
     robot.control_finger_width(0.1)
     i = 0
     grasp_performed = False
+    drop_performed = False
     while True:
         q_desired = np.array([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])  # random desired joint angles for the robot arm
         # Desired location for end effector
@@ -131,9 +135,13 @@ def run():
 
             position_error = q_desired - q
             velocity_error = q_dot_desired - q_dot
-            desired_accel = q_ddot_desired + Kp @ position_error + Kd @ velocity_error
 
+            desired_accel = q_ddot_desired + Kp @ position_error + Kd @ velocity_error
             torques = M @ desired_accel + C + g
+
+            if i == 2:
+                cube_gravity = - 0.2 # u can also add * 10 for g
+                torques = M @ desired_accel + C + g + cube_gravity
 
             torque_limits = np.array([150, 150, 150, 28, 28, 28])
             torques = np.clip(
@@ -151,6 +159,9 @@ def run():
             print(end_effector_position, desired_end_effector_pos)
             print(cosine)
             end_effector_velocity = robot.robot_state.get_end_effector_linear_velocity()
+
+            if i == 2 and cosine >= 0.998:
+                location_reached = True
             if cosine >= 0.99999 and all(v < 0.01 for v in end_effector_velocity):
                 location_reached = True
             robot.sim.step()
@@ -162,8 +173,12 @@ def run():
         else:
             open_grasp(robot)
 
+        if not drop_performed and i == 2:
+            robot.control_finger_width(0.1)
+            drop_performed = True
         # Switch to 2nd location
-        i += 1
+        if i < 2:
+            i += 1
 
 if __name__ == "__main__":
     run()
