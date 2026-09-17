@@ -1,3 +1,6 @@
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import argparse
 import time
 import numpy as np
@@ -7,6 +10,7 @@ from ur_simulation.pybullet import PyBullet
 from ur_simulation.classic_control.robot_state.pybullet_robot_state import JointType
 from XboxController import XboxController
 from numpy.linalg import norm
+from math import sin, cos
 
 
 def open_grasp(robot:UR7e):
@@ -18,6 +22,17 @@ def open_grasp(robot:UR7e):
 def close_grasp(robot:UR7e):
     # Close fingers
     robot.control_finger_width(0.01)
+
+def axisangle_to_q(theta, v):
+    x = v[0]
+    y = v[1]
+    z = v[2]
+
+    w = cos(theta/2.)
+    x = x * sin(theta/2.)
+    y = y * sin(theta/2.)
+    z = z * sin(theta/2.)
+    return[x, y, z, w]
 
 def create_scene():
     init_joint_angles = np.array([1.57, -1.7, 2.4, -1.57, -1.57, -1.57])
@@ -59,8 +74,10 @@ def run():
     while True:
         q_desired = np.array([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])  # random desired joint angles for the robot arm
         # Desired location for end effector
-        desired_end_effector_pos = [[0.7, 0.5, 0.1], [-0.7, 0.5, 0.1]]
-        desired_end_effector_orientation = [0, 0, 0, 1]
+        desired_end_effector_pos = [[0.7, 0.5, 0.3], [0.7, 0.5, 0.17], [-0.7, 0.5, 0.1]]
+        # desired_end_effector_orientation = axisangle_to_q(90, [0, 1, 0])
+        desired_end_effector_orientation = [0, 0.7071, 0, 0.7071]
+        print(desired_end_effector_orientation)
         q_dot_desired = np.zeros_like(q_desired)  # static setpoint -> zero desired velocity
         q_ddot_desired = np.zeros_like(q_desired)
         n_joints = 6
@@ -125,7 +142,8 @@ def run():
                       (norm(end_effector_position) * norm(desired_end_effector_pos[i])))
             print(end_effector_position, desired_end_effector_pos)
             print(cosine)
-            if cosine >= 0.9879:
+            end_effector_velocity = robot.robot_state.get_end_effector_linear_velocity
+            if cosine >= 0.9999:
                 location_reached = True
             robot.sim.step()
         # # Grasping the object
@@ -137,7 +155,7 @@ def run():
         #     open_grasp(robot)
 
         # Switch to 2nd location
-        #i = 1
+        i += 1
 
 if __name__ == "__main__":
     run()
