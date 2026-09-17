@@ -74,15 +74,23 @@ def run():
     while True:
         q_desired = np.array([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])  # random desired joint angles for the robot arm
         # Desired location for end effector
-        desired_end_effector_pos = [[0.7, 0.5, 0.3], [0.7, 0.5, 0.17], [-0.7, 0.5, 0.1]]
+        desired_end_effector_pos = [[0.7, 0.5, 0.3], [0.7, 0.5, 0.16], [-0.7, 0.5, 0.5]]
         # desired_end_effector_orientation = axisangle_to_q(90, [0, 1, 0])
         desired_end_effector_orientation = [0, 0.7071, 0, 0.7071]
         print(desired_end_effector_orientation)
         q_dot_desired = np.zeros_like(q_desired)  # static setpoint -> zero desired velocity
         q_ddot_desired = np.zeros_like(q_desired)
         n_joints = 6
-        Kp = np.diag(np.full(n_joints, 1))
-        Kd = np.diag(np.full(n_joints, 1))
+        if i == 0:
+            Kp = np.diag(np.full(n_joints, 200))
+            Kd = np.diag(np.full(n_joints, 45))
+        elif i == 1:
+            Kp = np.diag(np.full(n_joints, 5))
+            Kd = np.diag(np.full(n_joints, 1))
+        elif i == 2:
+            Kp = np.diag(np.full(n_joints, 5))
+            Kd = np.diag(np.full(n_joints, 3))
+
 
         # Kp = np.diag([50, 50, 50, 30, 30, 30])
         # Kd = np.diag([14, 14, 14, 10, 10, 10])
@@ -142,17 +150,17 @@ def run():
                       (norm(end_effector_position) * norm(desired_end_effector_pos[i])))
             print(end_effector_position, desired_end_effector_pos)
             print(cosine)
-            end_effector_velocity = robot.robot_state.get_end_effector_linear_velocity
-            if cosine >= 0.9999:
+            end_effector_velocity = robot.robot_state.get_end_effector_linear_velocity()
+            if cosine >= 0.99999 and all(v < 0.01 for v in end_effector_velocity):
                 location_reached = True
             robot.sim.step()
         # # Grasping the object
-        # if not grasp_performed:
-        #     close_grasp(robot)
-        #     grasp_performed = True
-        #     robot.sim.step()
-        # else:
-        #     open_grasp(robot)
+        if not grasp_performed and i == 1:
+            close_grasp(robot)
+            grasp_performed = True
+            robot.sim.step()
+        else:
+            open_grasp(robot)
 
         # Switch to 2nd location
         i += 1
