@@ -158,12 +158,13 @@ def run():
     loop = True
     grasp_performed = False
     drop_performed = False
-    location_reached = False
+
     imp_location_reached = False
     while True:
+        location_reached = False
         q_desired = np.array([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])  # random desired joint angles for the robot arm
         # Desired location for end effector
-        desired_end_effector_pos = [ [0.7, 0.5, 0.3], [0.7, 0.5, 0.16]]
+        desired_end_effector_pos = [ [0.7, 0.5, 0.3], [-0.7, 0.5, 0.5]]
         desired_end_effector_orientation = [0, 0.7071, 0, 0.7071]
         q_dot_desired = np.zeros_like(q_desired)  # static setpoint -> zero desired velocity
         q_ddot_desired = np.zeros_like(q_desired)
@@ -236,13 +237,12 @@ def run():
             print(cosine)
             end_effector_velocity = robot.robot_state.get_end_effector_linear_velocity()
 
-            if i == 1 and cosine >= 0.998:
-                location_reached = True
-            if cosine >= 0.99999 and all(v < 0.01 for v in end_effector_velocity):
+            # if i == 1 and cosine >= 0.998:
+            #     location_reached = True
+            if i == 0 and cosine >= 0.99999 and all(v < 0.01 for v in end_effector_velocity):
                 location_reached = True
             robot.sim.step()
 
-        print("asdiasda")
 
         pos0 = robot.robot_state.get_end_effector_position()
         quat0 = robot.robot_state.get_end_effector_orientation()
@@ -266,10 +266,11 @@ def run():
             imp_location_reached = True
 
 
-        while not grasp_performed:
-            robot.control_finger_width(0.1)
+        #while not grasp_performed:
+        robot.control_finger_width(0.1)
+        i = 1
             # This causes the arm to hit the tray, but it keeps the sim up so i left it in
-            robot.sim.step()
+        #robot.sim.step()
 
 if __name__ == "__main__":
     run()
