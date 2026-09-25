@@ -19,7 +19,29 @@ def create_scene():
         neutral_joints=init_joint_angles,
     )
     robot.sim.create_plane(0)
-    return robot
+
+    tray_id = p.loadURDF("tray/traybox.urdf", basePosition=[-0.7, 0.5, 0])
+
+    cube_size = 0.01
+
+    collision_shape = p.createCollisionShape(
+        p.GEOM_BOX,
+        halfExtents=[cube_size, cube_size, cube_size]
+    )
+
+    visual_shape = p.createVisualShape(
+        p.GEOM_BOX,
+        halfExtents=[cube_size, cube_size, cube_size]
+    )
+
+    cube_id = p.createMultiBody(
+        baseMass=0.2,
+        baseCollisionShapeIndex=collision_shape,
+        baseVisualShapeIndex=visual_shape,
+        basePosition=[0.7, 0.5, 0.1]
+    )
+
+    return robot, cube_id, tray_id
 
 def min_jerk(tau):
     tau = np.clip(tau, 0.0, 1.0)
@@ -118,41 +140,77 @@ def step(robot, pos_d, quat_d, vel_d, ang_vel_d, acc_d, ang_acc_d, Kp, Kd, width
 
 
 def run():
-    robot = create_scene()
+    robot, cube, tray = create_scene()
     dt = 1.0 / 240.0
+
+    robot.control_finger_width(0.1)
+    #IDK why yet
+    i = 0
 
     # Gains. With INERTIA_SHAPING these act on a unit mass (acceleration level),
     # so D = 2*sqrt(K) gives critical damping.
     HIGH_K = np.array([800., 800., 800., 60., 60., 60.])
     HIGH_D = 2 * np.sqrt(HIGH_K)
+    Grip_length_open = 0.5
+    Grip_lenght_closed = 0.01
+    GRIP = Grip_lenght_closed
 
+    imp_localtion_reached = False
+
+    #IDK CAN PROP BE REMOVED
     quat_down = R.from_euler("xyz", [np.pi, 0, 0]).as_quat()
-    GRIP = 0.01
 
-    # Start the trajectory from where the robot actually is
-    pos0 = robot.robot_state.get_end_effector_position()
-    quat0 = robot.robot_state.get_end_effector_orientation()
+    while True:
+        q_desired = np.array([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])  # random desired joint angles for the robot arm
+        desired_end_effector_pos = [ [0.7, 0.5, 0.3], [-0.7, 0.5, 0.5]]
+        desired_end_effector_orientation = [0, 0.7071, 0, 0.7071]
 
-    waypoints = [
-        create_waypoint(pos0, quat0, 0.0, GRIP, HIGH_K, HIGH_D),
-        create_waypoint([0.5, 0.0, 0.5], quat_down, 7.0, GRIP, HIGH_K, HIGH_D),
-        create_waypoint([0.5, 0.0, 0.1], quat_down, 5.0, GRIP, HIGH_K, HIGH_D),
-        create_waypoint([0.5, 0.0, 0.5], quat_down, 5.0, GRIP, HIGH_K, HIGH_D),
-    ]
+        #REMOVE THIS IS FIXED BUG FOR EXITING WHEN DONE
+        n_joints = 6
+        if i == 0:
+            Kp = np.diag(np.full(n_joints, 200))
+            Kd = np.diag(np.full(n_joints, 45))
+        elif i == 1:
+            Kp = np.diag(np.full(n_joints, 5))
+            Kd = np.diag(np.full(n_joints, 1))
+        elif i == 2:
+            Kp = np.diag(np.full(n_joints, 5))
+            Kd = np.diag(np.full(n_joints, 3))
 
-    # Run each segment once
-    for wp_a, wp_b in zip(waypoints[:-1], waypoints[1:]):
-        print("moving to", wp_b['pos'])
-        T = wp_b['duration']
-        n_steps = int(round(T / dt))
-        for i in range(n_steps + 1):
-            t = i * dt
-            step(robot, *interpolate(wp_a, wp_b, t, T))
+        q_desired = robot.robot_model.get_inverse_kinematics(position=desired_end_effector_pos[i],
+                                                             quaternion=desired_end_effector_orientation)
+        q_desired = np.array(q_desired).tolist()
+        q_desired = q_desired[:6]  # Only take the first 6 joint angles for the arm
+        # max and min joint limits
+        q_desired[0] = np.clip(q_desired[0], -2.5 * np.pi, 2.5 * np.pi)
+        q_desired[1] = np.clip(q_desired[1], -2.5 * np.pi, 2.5 * np.pi)
+        q_desired[2] = np.clip(q_desired[2], -2.5 * np.pi, 2.5 * np.pi)
+        q_desired[3] = np.clip(q_desired[3], -2.5 * np.pi, 2.5 * np.pi)
+        q_desired[4] = np.clip(q_desired[4], -2.5 * np.pi, 2.5 * np.pi)
+        q_desired[5] = np.clip(q_desired[5], -2.5 * np.pi, 2.5 * np.pi)
 
-    last = waypoints[-1]
-    zeros3 = np.zeros(3)
-    quit()
-
+        pos0 = robot.robot_state.get_end_effector_position()
+        quat0 = robot.robot_state.get_end_effector_orientation()
+        quat_down = np.array(desired_end_effector_orientation)
+        waypoints = [
+            create_waypoint(pos0, quat0, 0.0, Grip_length_open, HIGH_K, HIGH_D),
+            create_waypoint([0.7, 0.5, 0.16], quat_down, 7.0, Grip_length_open, HIGH_K, HIGH_D),
+            create_waypoint([0.7, 0.5, 0.16], quat_down, 1.0, Grip_lenght_closed, HIGH_K, HIGH_D),
+            create_waypoint([-0.7, 0.5, 0.5], quat_down, 7.0, Grip_lenght_closed, HIGH_K, HIGH_D),
+            create_waypoint([-0.7, 0.5, 0.5], quat_down, 1.0, Grip_length_open, HIGH_K, HIGH_D)
+        ]
+        while not imp_localtion_reached:
+            for wp_a, wp_b in zip(waypoints[:-1], waypoints[1:]):
+                print("moving to", wp_b['pos'])
+                T = wp_b['duration']
+                n_steps = int(round(T / dt))
+                for i in range(n_steps + 1):
+                    t = i * dt
+                    step(robot, *interpolate(wp_a, wp_b, t, T))
+            imp_localtion_reached = True
+            
+        #REMOVE THIS IS FIXED BUG FOR EXITING WHEN DONE
+        i = 1
 
 if __name__ == "__main__":
     run()
