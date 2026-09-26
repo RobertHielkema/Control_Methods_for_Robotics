@@ -109,7 +109,8 @@ def step(robot, pos_d, quat_d, vel_d, ang_vel_d, acc_d, ang_acc_d, Kp, Kd, width
     torques = J.T @ F + C + g
 
     # Write torques in csv file
-    with open("torques.csv", "a") as f:
+    torques = np.clip(torques, -500, 500)
+    with open("torques_hybrid.csv", "a") as f:
         f.write(",".join(map(str, torques)) + "\n")
 
     robot.control_torques(torques)
@@ -227,6 +228,11 @@ def run():
             desired_accel = q_ddot_desired + Kp @ position_error + Kd @ velocity_error
             torques = M @ desired_accel + C + g
 
+            # Write torques in csv file
+            torques = np.clip(torques, -500, 500)
+            with open("torques_hybrid.csv", "a") as f:
+                f.write(",".join(map(str, torques)) + "\n")
+
             # Send torques
             robot.control_torques(torques)
 
@@ -234,7 +240,7 @@ def run():
             cosine = (np.dot(end_effector_position, desired_end_effector_pos[i]) /
                       (norm(end_effector_position) * norm(desired_end_effector_pos[i])))
             #print(end_effector_position, desired_end_effector_pos)
-            print(cosine)
+            #print(cosine)
             end_effector_velocity = robot.robot_state.get_end_effector_linear_velocity()
 
             # if i == 1 and cosine >= 0.998:
@@ -273,4 +279,6 @@ def run():
         #robot.sim.step()
 
 if __name__ == "__main__":
+    with open("torques_hybrid.csv", "w") as f:
+        f.write("")  # Clear the file at the start of the run
     run()

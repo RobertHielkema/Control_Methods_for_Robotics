@@ -215,6 +215,12 @@ def step(robot, pos_d, quat_d, vel_d, ang_vel_d, acc_d, ang_acc_d, Kp, Kd, width
     J_prev = J.copy()
 
     torques = J.T @ F + C + g
+
+    # Write torques in csv file
+    torques = np.clip(torques, -500, 500)
+    with open("torques_time_optimal.csv", "a") as f:
+        f.write(",".join(map(str, torques)) + "\n")
+
     robot.control_torques(torques)
     robot.control_finger_width(width)
     robot.sim.step()
@@ -255,6 +261,11 @@ def run_joint_space_approach(robot, target_pos, target_quat):
         desired_accel = Kp @ pos_err + Kd @ vel_err
         torques = M @ desired_accel + C + g
         torques = np.clip(torques, -TORQUE_LIMITS, TORQUE_LIMITS)
+
+        # Write torques in csv file
+        torques = np.clip(torques, -500, 500)
+        with open("torques_time_optimal.csv", "a") as f:
+            f.write(",".join(map(str, torques)) + "\n")
 
         robot.control_torques(torques)
         robot.sim.step()
@@ -297,4 +308,6 @@ def run():
 
 
 if __name__ == "__main__":
+    with open("torques_time_optimal.csv", "w") as f:
+        f.write("")  # Clear the file at the start of the run
     run()

@@ -150,6 +150,10 @@ def run():
                 torque_limits
             )
 
+            # Write torques in csv file
+            with open("torques_with_object.csv", "a") as f:
+                f.write(",".join(map(str, torques)) + "\n")
+
             # Send torques
             robot.control_torques(torques)
 
@@ -176,9 +180,14 @@ def run():
         if not drop_performed and i == 2:
             robot.control_finger_width(0.1)
             drop_performed = True
+
+        if drop_performed and i == 2:
+            quit()
         # Switch to 2nd location
         if i < 2:
             i += 1
 
 if __name__ == "__main__":
+    with open("torques_with_object.csv", "w") as f:
+        f.write("")  # Clear the file before starting
     run()
