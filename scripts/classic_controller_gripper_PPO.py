@@ -49,8 +49,8 @@ def create_scene():
     return robot # cube_id, tray_id
 
 # Observation contains: q, q_dot, ee_position, desired_position
-def create_observation(q, q_dot, ee_position, desired_position):
-    observation = np.concatenate([q, q_dot, ee_position, desired_position])
+def create_observation(q, q_dot, ee_position, desired_position, distance):
+    observation = np.concatenate([q, q_dot, ee_position, desired_position, [distance]])
     return observation
 
 
@@ -71,11 +71,11 @@ def calculate_reward(ee_position, desired_position):
 
     # Add penalty for the robot arm/ or any of the joints touching the floor
     # we can check for contacts between robot and floor in pybullet but i did not think if implementating it.
-    z= ee_position[2]
-    h_min = 0.1
-    floor_penalty = max(0.0, h_min - z)**2
-    floor_weight = 90
-    reward = reward - floor_weight * floor_penalty
+    # z= ee_position[2]
+    # h_min = 0.1
+    # floor_penalty = max(0.0, h_min - z)**2
+    # floor_weight = 90
+    # reward = reward - floor_weight * floor_penalty
     return reward
 
 
@@ -124,12 +124,13 @@ def run():
     q = robot.robot_state.get_joint_angles()
     q_dot = robot.robot_state.get_joint_velocities()
     ee_location = robot.robot_state.get_end_effector_position()
-
+    distance = np.linalg.norm(desired_end_effector_pos - ee_location)
     observation = create_observation(
         q,
         q_dot,
         ee_location,
-        desired_end_effector_pos
+        desired_end_effector_pos,
+        distance
     )
 
     # --------------------------------------------------
@@ -141,7 +142,7 @@ def run():
         n_steps=2048,
         n_epochs=10,
         batch_size=64,
-        total_timesteps=1_000_000,
+        total_timesteps=200_000,
         gamma=0.99,
         gae_lambda=0.95,
         clip_eps=0.2,
@@ -150,28 +151,29 @@ def run():
         max_grad_norm=0.5,
         lr=3e-4,
         anneal_lr=True,
-        device="cuda"
+        device="cpu"
     )
 
     # --------------------------------------------------
     # 4. Main training loop
     # --------------------------------------------------
-    total_timesteps = 1_000_000
+    total_timesteps = 200_000
     q_desired = np.array([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])
     q_dot_desired = np.zeros_like(q_desired)  # static setpoint -> zero desired velocity
     q_ddot_desired = np.zeros_like(q_desired)
     n_joints = 6
     Kp = np.diag(np.full(n_joints, 5))
     Kd = np.diag(np.full(n_joints, 1))
-    desired_end_effector_pos_list = [[-0.7, 0.5, 0.5]]
-    num_episodes = 1
+    #desired_end_effector_pos_list = [[-0.7, 0.5, 0.5]]
+    num_episodes = 10
     for ep in range(num_episodes):
         # generate a new point
-        #desired_end_effector_pos = [random.uniform(-8.50, 8.50), random.uniform(0, 8.50), random.uniform(-8.50, 8.50)]
-        desired_end_effector_pos= desired_end_effector_pos_list[ep] 
+        desired_end_effector_pos = [random.uniform(-0.850, 0.850), random.uniform(0, 0.850), random.uniform(-0.850, 0.850)]
+        #desired_end_effector_pos= desired_end_effector_pos_list[ep] 
         print(f"Starting Episode Number:{ep}/{num_episodes}")
         print(f"New location: {desired_end_effector_pos}")
         for step in range(total_timesteps):
+            distance = np.linalg.norm(desired_end_effector_pos - ee_location)
             dynamics = robot.robot_model.get_dynamics()
             M = dynamics.mass_matrix
             C = dynamics.coriolis_vector
@@ -180,7 +182,7 @@ def run():
             
             action, log_prob, value = agent.select_action(observation)
             #print(action)
-            q_desired = q_min + 0.5 * (action + 1.0) * (q_max - q_min)
+            q_desired = action #q_min + 0.5 * (action + 1.0) * (q_max - q_min)
             # action contains 6 joint angles, aka q_desired
             q = robot.robot_state.get_joint_angles()
             # print("joint angles:", q)
@@ -219,11 +221,15 @@ def run():
             # ----------------------------------------------
             # E. Create next observation
             # ----------------------------------------------
+
+            
+            
             new_observation = create_observation(
                 q,
                 q_dot,
                 ee_location,
-                desired_end_effector_pos
+                desired_end_effector_pos,
+                distance
             )
 
             # ----------------------------------------------
@@ -237,9 +243,7 @@ def run():
             # ----------------------------------------------
             # G. Check if episode is finished
             # ----------------------------------------------
-            distance = np.linalg.norm(
-                desired_end_effector_pos - ee_location
-            )
+            
 
             done = distance < 0.05
 
@@ -289,7 +293,7 @@ def run():
             #     print("Action:", action)
             #     print("EE:", ee_location)
             #     print("Distance:", distance)
-
+        agent.current_ep += 1
 
 
 if __name__ == "__main__":

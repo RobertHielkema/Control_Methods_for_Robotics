@@ -29,7 +29,7 @@ class PPOAgent:
         vf_coef: float = 0.5,
         ent_coef: float = 0.01,
         max_grad_norm: float = 0.5,
-        lr: float = 3e-4,
+        lr: float = 1e-4,
         anneal_lr: bool = True,
         device: str = "cpu",
     ):
@@ -46,6 +46,7 @@ class PPOAgent:
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm
         self.device = torch.device(device)
+        self.current_ep = 1
 
         self.network = ActorCriticNetwork(
             obs_dim, action_dim
@@ -95,6 +96,8 @@ class PPOAgent:
             T, device=self.device
         )
 
+    def calculate_gamma(self, observation):
+        self.gamma = np.clip(self.network.get_value(observation), 0.99, 1)
     @torch.no_grad()
     def select_action(self, obs: np.ndarray):
         """
@@ -127,6 +130,7 @@ class PPOAgent:
             log_prob.item(),
             value.item(),
         )
+        
 
     def store_reward_done(
         self, step: int, reward: float, done: bool
@@ -169,6 +173,9 @@ class PPOAgent:
         advantages = torch.zeros_like(self.reward_buffer)
         last_gae = torch.zeros((), device=self.device)
 
+        # Update gamma
+        self.calculate_gamma(next_obs_t)
+        
         for t in reversed(range(self.n_steps)):
             if t == self.n_steps - 1:
                 # Bootstrap only if the final transition did not end
@@ -180,6 +187,7 @@ class PPOAgent:
                 next_non_terminal = 1.0 - self.done_buffer[t]
                 next_val = self.value_buffer[t + 1]
 
+            
             delta = (
                 self.reward_buffer[t]
                 + self.gamma * next_val * next_non_terminal
@@ -246,6 +254,7 @@ class PPOAgent:
                     self.network.get_action_and_value(
                         self.obs_buffer[mb_idx],
                         self.action_buffer[mb_idx],
+                        nr_current_ep = self.current_ep
                     )
                 )
 
