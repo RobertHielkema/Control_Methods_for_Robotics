@@ -21,8 +21,8 @@ def create_scene():
         block_gripper=False,
         neutral_joints=init_joint_angles,
     )
-    robot.sim.create_plane(0)
-
+    #robot.sim.create_plane(0)
+    plane_id = p.loadURDF("plane.urdf")
     # # Spawn tray or smt idk
     # tray_id = p.loadURDF("tray/traybox.urdf", basePosition=[-0.7, 0.5, 0])
     #
@@ -46,21 +46,26 @@ def create_scene():
     #     basePosition=[0.7, 0.5, 0.1]
     # )
 
-    return robot # cube_id, tray_id
+    return robot, plane_id # cube_id, tray_id
 
 # Observation contains: q, q_dot, ee_position, desired_position
-def create_observation(q, q_dot, ee_position, desired_position, distance):
-    observation = np.concatenate([q, q_dot, ee_position, desired_position, [distance]])
+def create_observation(q, ee_position, desired_position):
+    observation = np.concatenate([q, ee_position, desired_position])
     return observation
 
 
 
 # Unlike in gymnasium we dont get the luxury of a pre-made reward function
-def calculate_reward(ee_position, desired_position):
+def calculate_reward(ee_position, desired_position, contacts, current_q = None, prev_q= None):
 
     # I implemented the Reward function from one of Hamidreza's papers
     # https://arxiv.org/pdf/2210.00803
 
+    # if contacts > 0:
+    #     print("OOF")
+
+    # calculate smootheness
+    #smoothness_penalty = - 0.1 * np.sum(current_q - prev_q) ** 2
     w_1 = 0.001
     w_2 = 0.1
     d_max = 0.05
@@ -76,8 +81,46 @@ def calculate_reward(ee_position, desired_position):
     # floor_penalty = max(0.0, h_min - z)**2
     # floor_weight = 90
     # reward = reward - floor_weight * floor_penalty
+    # if contacts is not None:
+    #     reward -= 10
     return reward
 
+
+import numpy as np
+
+def normalize_observation(
+    q,
+    ee_position,
+    target_position,
+    q_lower,
+    q_upper,
+    position_scale=0.8,
+):
+    # Joint angles: map joint limits approximately to [-1, 1]
+    q_normalized = (
+        2.0 * (q - q_lower) / (q_upper - q_lower) - 1.0
+    )
+
+    # Relative end-effector position error
+    position_error = target_position - ee_position
+
+    # Scale position error to a representative workspace range
+    position_error_normalized = np.clip(
+        position_error / position_scale, -1.0, 1.0
+    )
+
+    # Optionally normalize target position in world coordinates
+    target_normalized = np.clip(
+        target_position / position_scale, -1.0, 1.0
+    )
+
+    obs = np.concatenate([
+        q_normalized,
+        position_error_normalized,
+        target_normalized,
+    ])
+
+    return obs.astype(np.float32)
 
 
 def run():
@@ -85,7 +128,7 @@ def run():
     # --------------------------------------------------
     # 1. Create environment
     # --------------------------------------------------
-    robot = create_scene()
+    robot, plane_id = create_scene()
     robot_id = robot.robot_id
     robot.control_finger_width(0.1)
 
@@ -112,7 +155,7 @@ def run():
 
     q_min = np.array(q_min)
     q_max = np.array(q_max)
-
+    print(q_min, q_max)
 
 
 
@@ -127,10 +170,9 @@ def run():
     distance = np.linalg.norm(desired_end_effector_pos - ee_location)
     observation = create_observation(
         q,
-        q_dot,
         ee_location,
         desired_end_effector_pos,
-        distance
+        #distance
     )
 
     # --------------------------------------------------
@@ -142,33 +184,37 @@ def run():
         n_steps=2048,
         n_epochs=10,
         batch_size=64,
-        total_timesteps=200_000,
+        total_timesteps=2_000_000,
         gamma=0.99,
         gae_lambda=0.95,
         clip_eps=0.2,
         vf_coef=0.5,
         ent_coef=0.01,
         max_grad_norm=0.5,
-        lr=3e-4,
-        anneal_lr=True,
+        lr=3e-5,
+        anneal_lr=False,
         device="cpu"
     )
 
     # --------------------------------------------------
     # 4. Main training loop
     # --------------------------------------------------
-    total_timesteps = 200_000
+    total_timesteps = 100_000
     q_desired = np.array([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])
     q_dot_desired = np.zeros_like(q_desired)  # static setpoint -> zero desired velocity
     q_ddot_desired = np.zeros_like(q_desired)
     n_joints = 6
     Kp = np.diag(np.full(n_joints, 5))
     Kd = np.diag(np.full(n_joints, 1))
-    #desired_end_effector_pos_list = [[-0.7, 0.5, 0.5]]
-    num_episodes = 10
+    # desired_end_effector_pos_list = [[0.7, 0.5, 0.3], [0.7, 0.5, 0.16], [-0.7, 0.5, 0.5], [0.57, 0.35, 0.5], [-0.4, 0.3, 0.2],
+    #                                   [0.5, 0.65, 0.5], [-0.3, -0.5, 0.6], [-0.4, 0.3, 0.2], [0.2, 0.2, 0.1], [0.1, 0.3, 0.2]]
+    num_episodes = 20
     for ep in range(num_episodes):
+
+        # reset robot position
+        robot.set_joint_angles([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])
         # generate a new point
-        desired_end_effector_pos = [random.uniform(-0.850, 0.850), random.uniform(0, 0.850), random.uniform(-0.850, 0.850)]
+        desired_end_effector_pos = [random.uniform(-0.7, 0.7), random.uniform(-0.5, 0.5), random.uniform(0, 0.7)]
         #desired_end_effector_pos= desired_end_effector_pos_list[ep] 
         print(f"Starting Episode Number:{ep}/{num_episodes}")
         print(f"New location: {desired_end_effector_pos}")
@@ -182,7 +228,9 @@ def run():
             
             action, log_prob, value = agent.select_action(observation)
             #print(action)
-            q_desired = action #q_min + 0.5 * (action + 1.0) * (q_max - q_min)
+            max_action = np.array([3.14159265, 3.14159265, 3.14159265, 3.14159265, 3.14159265, 3.14159265])
+            
+            q_desired = np.clip(action, -max_action, max_action)  #q_min + 0.5 * (action + 1.0) * (q_max - q_min)
             # action contains 6 joint angles, aka q_desired
             q = robot.robot_state.get_joint_angles()
             # print("joint angles:", q)
@@ -226,18 +274,22 @@ def run():
             
             new_observation = create_observation(
                 q,
-                q_dot,
                 ee_location,
                 desired_end_effector_pos,
-                distance
+                #distance
             )
 
             # ----------------------------------------------
             # F. Calculate reward
             # ----------------------------------------------
+
+            # check for contacts between robot and plane
+            contacts = p.getContactPoints(bodyA = robot_id, bodyB=plane_id, linkIndexA = 3)
+            #print(contacts)
             reward = calculate_reward(
                 ee_location,
-                desired_end_effector_pos
+                desired_end_effector_pos,
+                contacts
             )
 
             # ----------------------------------------------

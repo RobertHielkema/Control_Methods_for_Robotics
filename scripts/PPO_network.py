@@ -35,7 +35,10 @@ class ActorCriticNetwork(nn.Module):
         self.actor_fc1   = layer_init(nn.Linear(256, 256))
         self.actor_act1  = nn.Tanh()
         self.actor_mean  = layer_init(nn.Linear(256, action_dim), std=0.01)
-        self.actor_log_std = nn.Parameter(torch.zeros(action_dim))
+        initial_std = 0.5
+        self.actor_log_std = nn.Parameter(
+            torch.full((1, action_dim), np.log(initial_std))
+        )
 
         # -- Critic head --
         self.critic_fc1  = layer_init(nn.Linear(256, 256))
@@ -69,13 +72,14 @@ class ActorCriticNetwork(nn.Module):
         beta = 1 +  12 * ( nr_current_ep / total_episode_count)
         number_of_samples = int(np.clip(random.poisson(beta), 1, beta))
         sample_list = []
-        for sample in range(number_of_samples):
-                action = dist.sample()
-                #print(action)
-                sample_list.append(action)
+        # for sample in range(number_of_samples):
+        #         action = dist.sample()
+        #         #print(action)
+        #         sample_list.append(action)
         #print(sample_list)
-        action = np.mean(sample_list, axis=0)[0]
-        action = torch.Tensor(action)
+        action = dist.sample()
+        #action = np.mean(sample_list, axis=0)[0]
+        #action = torch.Tensor(action)
         #print(action)
         log_prob = dist.log_prob(action).sum(dim=-1)
         entropy  = dist.entropy().sum(dim=-1)
