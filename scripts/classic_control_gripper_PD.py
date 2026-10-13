@@ -1,3 +1,6 @@
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import argparse
 import time
 import numpy as np
@@ -41,6 +44,11 @@ def run():
         # Could be done simpler but I thought I'd stick with the matrix form to stay consistent with the lectures
         position_error = q_desired - q
         torques = Kp @ position_error - Kd @ q_dot + gravity
+        with open("torques_PD.csv", "a") as f:
+            f.write(",".join(map(str, torques)) + "\n")
+
+        with open("q_dot_PD.csv", "a") as f:
+            f.write(",".join(map(str, q_dot)) + "\n")
 
         # Send torques
         robot.control_torques(torques)

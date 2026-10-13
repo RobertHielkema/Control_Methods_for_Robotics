@@ -8,7 +8,7 @@ import pybullet as p
 from ur_simulation.classic_control.robots.ur7e import UR7e
 from ur_simulation.pybullet import PyBullet
 from ur_simulation.classic_control.robot_state.pybullet_robot_state import JointType
-from XboxController import XboxController
+# from XboxController import XboxController
 from numpy.linalg import norm
 from math import sin, cos
 
@@ -153,6 +153,9 @@ def run():
             # Write torques in csv file
             with open("torques_with_object.csv", "a") as f:
                 f.write(",".join(map(str, torques)) + "\n")
+
+            with open("q_dot_IDC.csv", "a") as f:
+                f.write(",".join(map(str, q_dot)) + "\n")
 
             # Send torques
             robot.control_torques(torques)

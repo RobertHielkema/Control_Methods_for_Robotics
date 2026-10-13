@@ -129,8 +129,12 @@ def step(robot, pos_d, quat_d, vel_d, ang_vel_d, acc_d, ang_acc_d, Kp, Kd, width
     torques = J.T @ F + C + g
 
     # Write torques in csv file
+    torques = np.clip(torques, -500, 500)
     with open("torques.csv", "a") as f:
         f.write(",".join(map(str, torques)) + "\n")
+
+    with open("q_dot_IMP.csv", "a") as f:
+        f.write(",".join(map(str, q_dot)) + "\n")
 
     robot.control_torques(torques)
     robot.control_finger_width(width)
@@ -165,18 +169,6 @@ def run():
         desired_end_effector_pos = [ [0.7, 0.5, 0.3], [-0.7, 0.5, 0.5]]
         desired_end_effector_orientation = [0, 0.7071, 0, 0.7071]
 
-        #REMOVE THIS IS FIXED BUG FOR EXITING WHEN DONE
-        n_joints = 6
-        if i == 0:
-            Kp = np.diag(np.full(n_joints, 200))
-            Kd = np.diag(np.full(n_joints, 45))
-        elif i == 1:
-            Kp = np.diag(np.full(n_joints, 5))
-            Kd = np.diag(np.full(n_joints, 1))
-        elif i == 2:
-            Kp = np.diag(np.full(n_joints, 5))
-            Kd = np.diag(np.full(n_joints, 3))
-
         q_desired = robot.robot_model.get_inverse_kinematics(position=desired_end_effector_pos[i],
                                                              quaternion=desired_end_effector_orientation)
         q_desired = np.array(q_desired).tolist()
@@ -209,8 +201,6 @@ def run():
                     step(robot, *interpolate(wp_a, wp_b, t, T))
             imp_localtion_reached = True
             
-        #REMOVE THIS IS FIXED BUG FOR EXITING WHEN DONE
-        i = 1
 
 if __name__ == "__main__":
     run()

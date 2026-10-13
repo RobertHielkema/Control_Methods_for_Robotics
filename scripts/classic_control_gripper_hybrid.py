@@ -8,7 +8,7 @@ import pybullet as p
 from ur_simulation.classic_control.robots.ur7e import UR7e
 from ur_simulation.pybullet import PyBullet
 from ur_simulation.classic_control.robot_state.pybullet_robot_state import JointType
-from XboxController import XboxController
+# from XboxController import XboxController
 from numpy.linalg import norm
 from math import sin, cos
 from scipy.spatial.transform import Rotation as R, Slerp
@@ -232,6 +232,9 @@ def run():
             torques = np.clip(torques, -500, 500)
             with open("torques_hybrid.csv", "a") as f:
                 f.write(",".join(map(str, torques)) + "\n")
+
+            with open("q_dot_hybrid.csv", "a") as f:
+                f.write(",".join(map(str, q_dot)) + "\n")
 
             # Send torques
             robot.control_torques(torques)

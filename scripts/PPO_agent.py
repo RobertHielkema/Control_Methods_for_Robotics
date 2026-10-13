@@ -1,8 +1,12 @@
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LinearLR
+from Simulated_annealing import SALearningRate
 
 from PPO_network import ActorCriticNetwork
 
@@ -23,8 +27,8 @@ class PPOAgent:
         action_dim: int,
         n_steps: int = 2048,            # how many env steps to collect before each update
         n_epochs: int = 10,             # how many times to loop over the rollout data
-        batch_size: int = 64,
-        total_timesteps: int = 1_000_000,
+        batch_size: int = 256,
+        total_timesteps: int = 200_000, #maybe tune this down
         gamma: float = 0.99,            # discount factor
         gae_lambda: float = 0.95,       # GAE lambda - controls bias/variance tradeoff
         clip_eps: float = 0.2,          # PPO clipping range
@@ -33,7 +37,10 @@ class PPOAgent:
         max_grad_norm: float = 0.5,     # gradient clipping
         lr: float = 3e-4,
         anneal_lr: bool = True,         # decay LR linearly to 0 over training
-        device: str = "cpu",
+        device: str = "gpu",
+        min_lr:float = 1e-6,
+        lr_decay:float = 0.98,
+        lr_patience: int = 5
     ):
         self.obs_dim = obs_dim
         self.action_dim = action_dim
@@ -46,6 +53,9 @@ class PPOAgent:
         self.clip_eps = clip_eps
         self.vf_coef = vf_coef
         self.ent_coef = ent_coef
+        self.min_lr = min_lr
+        self.lr_decay = lr_decay
+        self.lr_patience = lr_patience
         self.max_grad_norm = max_grad_norm
         self.device = torch.device(device)
 
@@ -54,8 +64,11 @@ class PPOAgent:
 
         # Linearly decay the learning rate to ~0 over all updates
         n_updates = total_timesteps // n_steps
-        self.scheduler = LinearLR(
-            self.optimizer, start_factor=1.0, end_factor=1e-8, total_iters=n_updates
+        # self.scheduler = LinearLR(
+        #     self.optimizer, start_factor=1.0, end_factor=1e-8, total_iters=n_updates
+        # ) if anneal_lr else None
+        self.scheduler = SALearningRate(
+            self.optimizer, lr0=lr, rf=self.lr_decay, patience=self.lr_patience, min_lr=self.min_lr
         ) if anneal_lr else None
 
         self._init_storage()
@@ -200,8 +213,10 @@ class PPOAgent:
                 total_loss += loss.item()
                 n_batches += 1
 
+        # if self.scheduler is not None:
+        #     self.scheduler.step()
         if self.scheduler is not None:
-            self.scheduler.step()
+            self.scheduler.step(self.reward_buffer.mean().item())
 
         self._step = 0
 

@@ -267,6 +267,10 @@ def run_joint_space_approach(robot, target_pos, target_quat):
         with open("torques_time_optimal.csv", "a") as f:
             f.write(",".join(map(str, torques)) + "\n")
 
+        with open("q_dot_time_optimal.csv", "a") as f:
+            f.write(",".join(map(str, q_dot)) + "\n")
+
+
         robot.control_torques(torques)
         robot.sim.step()
 
