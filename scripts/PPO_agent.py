@@ -58,6 +58,7 @@ class PPOAgent:
         self.lr_patience = lr_patience
         self.max_grad_norm = max_grad_norm
         self.device = torch.device(device)
+        self.current_ep = 1
 
         self.network = ActorCriticNetwork(obs_dim, action_dim).to(self.device)
         self.optimizer = Adam(self.network.parameters(), lr=lr, eps=1e-5)
@@ -182,7 +183,8 @@ class PPOAgent:
                 action, new_log_prob, entropy, new_value = \
                     self.network.get_action_and_value(
                         self.obs_buffer[mb_idx],
-                        self.action_buffer[mb_idx]
+                        self.action_buffer[mb_idx],
+                        nr_current_ep = self.current_ep
                     )
 
                 # Ratio between new and old policy probabilities

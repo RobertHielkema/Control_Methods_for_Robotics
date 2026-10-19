@@ -94,7 +94,9 @@ class ActorCriticNetwork(nn.Module):
     def get_action_and_value(
         self,
         obs,
-        action=None
+        action=None,
+        nr_current_ep = 1,
+        total_epsiode_count = 10
     ):
 
         features = self._features(obs)
@@ -113,6 +115,8 @@ class ActorCriticNetwork(nn.Module):
             action_mean,
             action_std
         )
+        #IDK what beta etc does in you guys improved ppo. So can add it later
+        # beta = 1 + 12 * (nr_current_ep / total_epsiode_count)
 
         # ------------------------------------------------------------
         # Sample action

@@ -12,6 +12,8 @@ from ur_simulation.classic_control.robot_state.pybullet_robot_state import Joint
 from numpy.linalg import norm
 from math import sin, cos
 from PPO_agent import PPOAgent
+import random
+import matplotlib.pyplot as plt
 
 
 def create_scene():
@@ -66,10 +68,30 @@ def calculate_reward(ee_position, desired_position):
     t_e = 0.0001
     e =  np.linalg.norm(ee_position - desired_position)
     #v = []
-    reward = -(w_1*e**2 + np.log(e**2 + t_e))
+    z = ee_position[2]
+    no_floor = -1 if z < 0.1 else 0
+    # reward = -(w_1*e**2 + np.log(e**2 + t_e))
+    reward = -e + no_floor
 
     return reward
 
+def plot_torques(torques):
+
+
+    # plt.ion()
+    # fig, ax = plt.subplots()
+    # line, = ax.plot([], [])
+
+
+    # line.set_xdata(torques[0])
+    # line.set_ydata(torques[0])
+
+    # ax.relim()
+    # ax.autoscale_view()
+
+    # plt.draw()
+    # plt.pause(1)
+    return
 
 
 def run():
@@ -105,7 +127,7 @@ def run():
         action_dim=6,
         n_steps=2048,
         n_epochs=10,
-        batch_size=64,
+        batch_size=256,
         total_timesteps=1_000_000,
         gamma=0.99,
         gae_lambda=0.95,
@@ -115,139 +137,154 @@ def run():
         max_grad_norm=0.5,
         lr=3e-4,
         anneal_lr=True,
-        device="cpu"
+        device="cuda"
     )
 
     # --------------------------------------------------
     # 4. Main training loop
     # --------------------------------------------------
     total_timesteps = 1_000_000
-    q_desired = np.array([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])
+    q_desired = np.array([0.0, -0.5, 0.5, -1.57, -1.57, 0.0])
+   
     q_dot_desired = np.zeros_like(q_desired)  # static setpoint -> zero desired velocity
     q_ddot_desired = np.zeros_like(q_desired)
     n_joints = 6
-    Kp = np.diag(np.full(n_joints, 200))
-    Kd = np.diag(np.full(n_joints, 45))
-    for step in range(total_timesteps):
-        dynamics = robot.robot_model.get_dynamics()
-        M = dynamics.mass_matrix
-        C = dynamics.coriolis_vector
-        g = dynamics.gravity_vector
+    Kp = np.diag(np.full(n_joints, 5))
+    Kd = np.diag(np.full(n_joints, 1))
+    num_episodes = 1
+    for ep in range(num_episodes):
 
-        # ----------------------------------------------
-        # A. PPO chooses an action
-        # ----------------------------------------------
-        action, log_prob, value = agent.select_action(observation)
+        robot.set_joint_angles([0.0, -0.5, 0.5, -1.57, -1.57, 0.0])
+        desired_end_effector_pos = [random.uniform(-0.7, 0.7), random.uniform(-0.5, 0.5), random.uniform(0, 0.7)]
+        p.addUserDebugPoints([desired_end_effector_pos], [[0,1,0]], pointSize = 10)
+        torques_list = []
+        for step in range(total_timesteps):
+            dynamics = robot.robot_model.get_dynamics()
+            M = dynamics.mass_matrix
+            C = dynamics.coriolis_vector
+            g = dynamics.gravity_vector
 
-        # action contains 6 joint angles, aka q_desired
-        q = robot.robot_state.get_joint_angles()
-        # print("joint angles:", q)
-        q_dot = robot.robot_state.get_joint_velocities()
-        # print("Joint velocities:", q_dot)
+            # ----------------------------------------------
+            # A. PPO chooses an action
+            # ----------------------------------------------
+            action, log_prob, value = agent.select_action(observation)
 
-        position_error = action - q
-        velocity_error = q_dot_desired - q_dot
+            # action contains 6 joint angles, aka q_desired
+            q = robot.robot_state.get_joint_angles()
+            # print("joint angles:", q)
+            q_dot = robot.robot_state.get_joint_velocities()
+            # print("Joint velocities:", q_dot)
 
-        desired_accel = q_ddot_desired + Kp @ position_error + Kd @ velocity_error
-        torques = M @ desired_accel + C + g
+            position_error = action - q
+            velocity_error = q_dot_desired - q_dot
 
-        torque_limits = np.array([150, 150, 150, 28, 28, 28])
-        torques = np.clip(
-            torques,
-            -torque_limits,
-            torque_limits
-        )
-        # ----------------------------------------------
-        # B. Apply torque to robot
-        # ----------------------------------------------
-        robot.control_torques(torques)
+            desired_accel = q_ddot_desired + Kp @ position_error + Kd @ velocity_error
+            torques = M @ desired_accel + C + g
 
-        # ----------------------------------------------
-        # C. Advance physics
-        # ----------------------------------------------
-        robot.sim.step()
+            torque_limits = np.array([150, 150, 150, 28, 28, 28])
+            torques = np.clip(
+                torques,
+                -torque_limits,
+                torque_limits
+            )
+            torques_list.append(torques)
+            # ----------------------------------------------
+            # B. Apply torque to robot
+            # ----------------------------------------------
+     
+            robot.control_torques(torques)
 
-        # ----------------------------------------------
-        # D. Read NEW state after physics step
-        # ----------------------------------------------
-        q = robot.robot_state.get_joint_angles()
-        q_dot = robot.robot_state.get_joint_velocities()
-        ee_location = robot.robot_state.get_end_effector_position()
+            # ----------------------------------------------
+            # C. Advance physics
+            # ----------------------------------------------
+            robot.sim.step()
 
-        # ----------------------------------------------
-        # E. Create next observation
-        # ----------------------------------------------
-        new_observation = create_observation(
-            q,
-            q_dot,
-            ee_location,
-            desired_end_effector_pos
-        )
+            # ----------------------------------------------
+            # D. Read NEW state after physics step
+            # ----------------------------------------------
+            q = robot.robot_state.get_joint_angles()
+            q_dot = robot.robot_state.get_joint_velocities()
+            ee_location = robot.robot_state.get_end_effector_position()
 
-        # ----------------------------------------------
-        # F. Calculate reward
-        # ----------------------------------------------
-        reward = calculate_reward(
-            ee_location,
-            desired_end_effector_pos
-        )
+            # ----------------------------------------------
+            # E. Create next observation
+            # ----------------------------------------------
+            new_observation = create_observation(
+                q,
+                q_dot,
+                ee_location,
+                desired_end_effector_pos
+            )
 
-        # ----------------------------------------------
-        # G. Check if episode is finished
-        # ----------------------------------------------
-        distance = np.linalg.norm(
-            desired_end_effector_pos - ee_location
-        )
+            # ----------------------------------------------
+            # F. Calculate reward
+            # ----------------------------------------------
+            reward = calculate_reward(
+                ee_location,
+                desired_end_effector_pos
+            )
 
-        done = distance < 0.05
+            # ----------------------------------------------
+            # G. Check if episode is finished
+            # ----------------------------------------------
+            distance = np.linalg.norm(
+                desired_end_effector_pos - ee_location
+            )
 
-        # ----------------------------------------------
-        # H. Store reward for the action we just took
-        # ----------------------------------------------
-        buffer_index = agent._step - 1
+            done = distance < 0.05
 
-        agent.store_reward_done(
-            buffer_index,
-            reward,
-            done
-        )
+            # ----------------------------------------------
+            # H. Store reward for the action we just took
+            # ----------------------------------------------
+            buffer_index = agent._step - 1
 
-        # ----------------------------------------------
-        # I. Move to next observation
-        # ----------------------------------------------
-        observation = new_observation
-
-        # ----------------------------------------------
-        # J. PPO update after collecting n_steps
-        # ----------------------------------------------
-        if agent._step == agent.n_steps:
-
-            info = agent.update(
-                observation,
+            agent.store_reward_done(
+                buffer_index,
+                reward,
                 done
             )
 
-            print(
-                f"Step: {step} | "
-                f"Policy loss: {info['policy_loss']:.4f} | "
-                f"Value loss: {info['value_loss']:.4f} | "
-                f"Entropy: {info['entropy']:.4f}"
-            )
+            # ----------------------------------------------
+            # I. Move to next observation
+            # ----------------------------------------------
+            observation = new_observation
 
-        # ----------------------------------------------
-        # K. Print occasionally, NOT every step
-        # ----------------------------------------------
-        if step % 1000 == 0:
-            print(
-                f"Step {step} | "
-                f"Distance: {distance:.4f} | "
-                f"Reward: {reward:.4f}"
-            )
-        # if step % 100 == 0:
-        #     print("Action:", action)
-        #     print("EE:", ee_location)
-        #     print("Distance:", distance)
+            # plot_torques(torques)
 
+            # ----------------------------------------------
+            # J. PPO update after collecting n_steps
+            # ----------------------------------------------
+            if agent._step == agent.n_steps:
+
+                info = agent.update(
+                    observation,
+                    done
+                )
+
+                print(
+                    f"Step: {step} | "
+                    f"Policy loss: {info['policy_loss']:.4f} | "
+                    f"Value loss: {info['value_loss']:.4f} | "
+                    f"Entropy: {info['entropy']:.4f}"
+                )
+
+            # ----------------------------------------------
+            # K. Print occasionally, NOT every step
+            # ----------------------------------------------
+            if step % 1000 == 0:
+                print(
+                    f"Step {step} | "
+                    f"Distance: {distance:.4f} | "
+                    f"Reward: {reward:.4f} | " 
+                    f"Z EE: {ee_location[2]}"
+                )
+            # if step % 100 == 0:
+            #     print("Action:", action)
+            #     print("EE:", ee_location)
+            #     print("Distance:", distance)
+        agent.save(f"agents/ppo_{agent.current_ep}")
+        agent.current_ep += 1
+       
 
 
 if __name__ == "__main__":
