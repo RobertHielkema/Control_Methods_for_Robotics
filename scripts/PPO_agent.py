@@ -39,7 +39,7 @@ class PPOAgent:
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.total_timesteps = total_timesteps
-        self.gamma = gamma
+        self.gamma = 0.99
         self.gae_lambda = gae_lambda
         self.clip_eps = clip_eps
         self.vf_coef = vf_coef
@@ -97,7 +97,7 @@ class PPOAgent:
         )
 
     def calculate_gamma(self, observation):
-        self.gamma = np.clip(self.network.get_value(observation), 0.99, 1)
+        self.gamma = 0.99
     @torch.no_grad()
     def select_action(self, obs: np.ndarray):
         """

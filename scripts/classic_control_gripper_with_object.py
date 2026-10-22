@@ -81,7 +81,7 @@ def run():
         desired_end_effector_pos = [[0.7, 0.5, 0.3], [0.7, 0.5, 0.16], [-0.7, 0.5, 0.5]]
         # desired_end_effector_orientation = axisangle_to_q(90, [0, 1, 0])
         desired_end_effector_orientation = [0, 0.7071, 0, 0.7071]
-        print(desired_end_effector_orientation)
+        #print(desired_end_effector_orientation)
         q_dot_desired = np.zeros_like(q_desired)  # static setpoint -> zero desired velocity
         q_ddot_desired = np.zeros_like(q_desired)
         n_joints = 6
@@ -156,12 +156,12 @@ def run():
 
             # Send torques
             robot.control_torques(torques)
-
+            print(f"Da roques: {torques}")
             # check if location of end effector is reached
             cosine = (np.dot(end_effector_position, desired_end_effector_pos[i]) /
                       (norm(end_effector_position) * norm(desired_end_effector_pos[i])))
-            print(end_effector_position, desired_end_effector_pos)
-            print(cosine)
+            #print(end_effector_position, desired_end_effector_pos)
+            #print(cosine)
             end_effector_velocity = robot.robot_state.get_end_effector_linear_velocity()
 
             if i == 2 and cosine >= 0.998:

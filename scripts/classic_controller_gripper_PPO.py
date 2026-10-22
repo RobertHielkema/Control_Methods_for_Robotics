@@ -13,6 +13,17 @@ from numpy.linalg import norm
 from math import sin, cos
 from PPO_agent import PPOAgent
 import random
+from ippo import IPPOAgent, IPPOConfig, RolloutBuffer
+import torch
+
+
+
+TOTAL_TIMESTEPS = 1_000_000
+ROLLOUT_STEPS = 2048
+MAX_EPISODE_STEPS = 100
+SUCCESS_DISTANCE = 0.05
+PRINT_EVERY = 1000
+
 
 
 def create_scene():
@@ -49,11 +60,20 @@ def create_scene():
     return robot, plane_id # cube_id, tray_id
 
 # Observation contains: q, q_dot, ee_position, desired_position
-def create_observation(q, ee_position, desired_position):
-    observation = np.concatenate([q, ee_position, desired_position])
+def create_observation(q, ee_position, desired_position, error):
+    observation = np.concatenate([q, ee_position, desired_position, error])
     return observation
 
+def calculate_error(ee_position, target_position):
+    ex, ey, ez = target_position - ee_position
 
+    # Absolute Euclidean distance
+    e = np.linalg.norm(target_position - ee_position)
+
+    # Complete error vector
+    error = np.array([e, ex, ey, ez])
+
+    return error
 
 # Unlike in gymnasium we dont get the luxury of a pre-made reward function
 def calculate_reward(ee_position, desired_position, contacts, current_q = None, prev_q= None):
@@ -85,8 +105,6 @@ def calculate_reward(ee_position, desired_position, contacts, current_q = None, 
     #     reward -= 10
     return reward
 
-
-import numpy as np
 
 def normalize_observation(
     q,
@@ -124,6 +142,14 @@ def normalize_observation(
 
 
 def run():
+    device = torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
+
+    print(f"Using device: {device}")
+
+    if device.type == "cuda":
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
 
     # --------------------------------------------------
     # 1. Create environment
@@ -172,7 +198,7 @@ def run():
         q,
         ee_location,
         desired_end_effector_pos,
-        #distance
+        error = calculate_error(ee_location, desired_end_effector_pos)
     )
 
     # --------------------------------------------------
@@ -193,7 +219,7 @@ def run():
         max_grad_norm=0.5,
         lr=3e-5,
         anneal_lr=False,
-        device="cpu"
+        device=device
     )
 
     # --------------------------------------------------
@@ -276,7 +302,7 @@ def run():
                 q,
                 ee_location,
                 desired_end_effector_pos,
-                #distance
+                error= calculate_error(ee_location, np.array(desired_end_effector_pos))
             )
 
             # ----------------------------------------------

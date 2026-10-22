@@ -86,7 +86,8 @@ def run():
 
     dt = 1.0 / 240.0  
     quat_down  = R.from_euler("xyz", [np.pi, 0, 0]).as_quat()
-    
+    #quat_down = [0, 0.7071, 0, 0.7071]
+
     waypoints = []
     waypoint = create_waypoint(q_desired[:3], quat_down, 7.0, 0.04, HIGH_K, HIGH_D)
     waypoint2 = create_waypoint(q_desired2[:3], quat_down, 5.0, 0.04, HIGH_K, HIGH_D)
