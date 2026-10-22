@@ -108,7 +108,9 @@ class PPOAgent:
         )
 
     def calculate_gamma(self, observation):
-        self.gamma = np.clip(self.network.get_value(observation), 0.99, 1)
+        v = self.network.get_value(observation).item()
+        self.gamma = float(np.clip(v, 0.99, 1.0))
+        
     @torch.no_grad()
     def select_action(self, obs: np.ndarray):
         """

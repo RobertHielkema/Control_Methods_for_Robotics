@@ -14,11 +14,33 @@ def create_scene():
         neutral_joints=init_joint_angles,
     )
     robot.sim.create_plane(0)
-    return robot
+
+    # add a cube to simulation
+    cube_size = 0.1  # half-extent = 10 cm
+
+    collision_shape = p.createCollisionShape(
+        p.GEOM_BOX,
+        halfExtents=[cube_size, cube_size, cube_size]
+    )
+
+    visual_shape = p.createVisualShape(
+        p.GEOM_BOX,
+        halfExtents=[cube_size, cube_size, cube_size]
+    )
+
+    cube_id = p.createMultiBody(
+        baseMass=1,
+        baseCollisionShapeIndex=collision_shape,
+        baseVisualShapeIndex=visual_shape,
+        basePosition=[1, 1, 0.1]
+    )
+
+
+    return robot, cube_id
 
 def run():
     # Initialize simulation and create the scene
-    robot = create_scene()
+    robot, cube = create_scene()
 
     q_desired = np.array([0.0, -1.2, 1.8, -1.57, -1.57, 0.0]) # random desired joint angles for the robot arm
  
@@ -28,7 +50,10 @@ def run():
 
     while True:
         # Access dynamic quantities
-        gravity = robot.robot_model.get_dynamics().gravity_vector
+        dynamics = robot.robot_model.get_dynamics()
+        M = dynamics.mass_matrix
+        C = dynamics.coriolis_vector
+        g = dynamics.gravity_vector
 
         # Access robot state
         q = robot.robot_state.get_joint_angles()
@@ -40,7 +65,7 @@ def run():
         # PD + gravity compensation control from tutorial slides
         # Could be done simpler but I thought I'd stick with the matrix form to stay consistent with the lectures
         position_error = q_desired - q
-        torques = Kp @ position_error - Kd @ q_dot + gravity
+        torques = Kp @ position_error - Kd @ q_dot + g
 
         # Send torques
         robot.control_torques(torques)
