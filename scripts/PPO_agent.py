@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LinearLR
+from SA_learning import SALearningRate
 
 from PPO_network import ActorCriticNetwork
 
@@ -32,6 +33,9 @@ class PPOAgent:
         lr: float = 1e-4,
         anneal_lr: bool = True,
         device: str = "cpu",
+        min_lr:float = 1e-6,
+        lr_decay:float = 0.98,
+        lr_patience: int = 5
     ):
         self.obs_dim = obs_dim
         self.action_dim = action_dim
@@ -47,10 +51,14 @@ class PPOAgent:
         self.max_grad_norm = max_grad_norm
         self.device = torch.device(device)
         self.current_ep = 1
+        self.min_lr = min_lr
+        self.lr_decay = lr_decay
+        self.lr_patience = lr_patience
 
         self.network = ActorCriticNetwork(
             obs_dim, action_dim
         ).to(self.device)
+        print(anneal_lr)
 
         self.optimizer = Adam(
             self.network.parameters(),
@@ -60,16 +68,19 @@ class PPOAgent:
 
         n_updates = max(1, total_timesteps // n_steps)
 
-        self.scheduler = (
-            LinearLR(
-                self.optimizer,
-                start_factor=1.0,
-                end_factor=1e-8,
-                total_iters=n_updates,
-            )
-            if anneal_lr
-            else None
-        )
+        # self.scheduler = (
+        #     LinearLR(
+        #         self.optimizer,
+        #         start_factor=1.0,
+        #         end_factor=1e-8,
+        #         total_iters=n_updates,
+        #     )
+        #     if anneal_lr
+        #     else None
+        # )
+        self.scheduler = SALearningRate(
+            self.optimizer, lr0=lr, rf=self.lr_decay, patience=self.lr_patience, min_lr=self.min_lr
+        ) if anneal_lr else None
 
         self._init_storage()
         self._step = 0
@@ -319,8 +330,11 @@ class PPOAgent:
                 total_clip_fraction += clip_fraction.item()
                 n_batches += 1
 
+        # if self.scheduler is not None:
+        #     self.scheduler.step()
+
         if self.scheduler is not None:
-            self.scheduler.step()
+            self.scheduler.step(self.reward_buffer.mean().item())
 
         metrics = {
             "policy_loss": total_policy_loss / n_batches,

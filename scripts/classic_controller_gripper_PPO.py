@@ -8,7 +8,7 @@ import pybullet as p
 from ur_simulation.classic_control.robots.ur7e import UR7e
 from ur_simulation.pybullet import PyBullet
 from ur_simulation.classic_control.robot_state.pybullet_robot_state import JointType
-from XboxController import XboxController
+# from XboxController import XboxController
 from numpy.linalg import norm
 from math import sin, cos
 from PPO_agent import PPOAgent
