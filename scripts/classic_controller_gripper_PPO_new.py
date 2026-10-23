@@ -220,8 +220,10 @@ def run():
     debugpoint = None
     for ep in range(num_episodes):
 
-        # reset robot position
-        robot.set_joint_angles([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])
+        # reset robot position - now random
+        robot.set_joint_angles(np.array([random.uniform(-3.14159265, 3.14159265), random.uniform(-3.14159265, 0.0),
+                                         random.uniform(-3.14159265, 3.14159265), random.uniform(-3.14159265, 3.14159265),
+                                         random.uniform(-3.14159265, 3.14159265), random.uniform(-3.14159265, 3.14159265)]))
         # generate a new point
         desired_end_effector_pos = [random.uniform(-0.7, 0.7), random.uniform(-0.5, 0.5), random.uniform(0, 0.7)]
         if debugpoint is not None:
