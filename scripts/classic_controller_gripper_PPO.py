@@ -13,7 +13,7 @@ from numpy.linalg import norm
 from math import sin, cos
 from PPO_agent import PPOAgent
 import random
-from ippo import IPPOAgent, IPPOConfig, RolloutBuffer
+# from ippo import IPPOAgent, IPPOConfig, RolloutBuffer
 import torch
 
 

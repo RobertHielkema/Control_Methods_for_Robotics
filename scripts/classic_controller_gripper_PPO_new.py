@@ -10,7 +10,7 @@ import pybullet as p
 from ur_simulation.classic_control.robots.ur7e import UR7e
 from ur_simulation.pybullet import PyBullet
 from ur_simulation.classic_control.robot_state.pybullet_robot_state import JointType
-from XboxController import XboxController
+# from XboxController import XboxController
 from numpy.linalg import norm
 from math import sin, cos
 from PPO_agent import PPOAgent
@@ -187,9 +187,9 @@ def run():
     # 3. Create PPO agent
     # --------------------------------------------------
     agent = PPOAgent(
-        obs_dim=observation.shape[0],
+     obs_dim=observation.shape[0],
         action_dim=6,
-        n_steps=8192,
+        n_steps=2048,
         n_epochs=10,
         batch_size=64,
         total_timesteps=2_000_000,
@@ -199,9 +199,9 @@ def run():
         vf_coef=0.5,
         ent_coef=0.01,
         max_grad_norm=0.5,
-        lr=3e-5,
-        anneal_lr=False,
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        lr=3e-4,
+        anneal_lr=True,
+        device="cuda"
     )
 
     # --------------------------------------------------
