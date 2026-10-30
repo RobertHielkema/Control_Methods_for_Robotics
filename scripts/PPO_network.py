@@ -66,21 +66,10 @@ class ActorCriticNetwork(nn.Module):
         a = self.actor_act1(a)
         action_mean = self.actor_mean(a)
         action_std  = self.actor_log_std.exp().expand_as(action_mean)
-        dist        = Normal(action_mean, action_std)
+        dist = Normal(action_mean, action_std)
 
-
-        beta = 1 +  12 * ( nr_current_ep / total_episode_count)
-        number_of_samples = int(np.clip(random.poisson(beta), 1, beta))
-        sample_list = []
-        # for sample in range(number_of_samples):
-        #         action = dist.sample()
-        #         #print(action)
-        #         sample_list.append(action)
-        #print(sample_list)
-        action = dist.sample()
-        #action = np.mean(sample_list, axis=0)[0]
-        #action = torch.Tensor(action)
-        #print(action)
+        if action is None:
+            action = dist.sample()
         log_prob = dist.log_prob(action).sum(dim=-1)
         entropy  = dist.entropy().sum(dim=-1)
 

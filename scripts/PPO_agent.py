@@ -58,7 +58,7 @@ class PPOAgent:
         self.network = ActorCriticNetwork(
             obs_dim, action_dim
         ).to(self.device)
-        print(anneal_lr)
+        # print(anneal_lr)
 
         self.optimizer = Adam(
             self.network.parameters(),
@@ -185,9 +185,6 @@ class PPOAgent:
 
         advantages = torch.zeros_like(self.reward_buffer)
         last_gae = torch.zeros((), device=self.device)
-
-        # Update gamma
-        self.calculate_gamma(next_obs_t)
         
         for t in reversed(range(self.n_steps)):
             if t == self.n_steps - 1:
@@ -267,7 +264,6 @@ class PPOAgent:
                     self.network.get_action_and_value(
                         self.obs_buffer[mb_idx],
                         self.action_buffer[mb_idx],
-                        nr_current_ep = self.current_ep
                     )
                 )
 
