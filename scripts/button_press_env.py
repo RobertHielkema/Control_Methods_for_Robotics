@@ -35,13 +35,13 @@ FINGER_WIDTH = 0.01      # closed fingers press like a single probe. Use 0.1 for
 # --------------------------------------------------
 # Reward parameters (tune these)
 # --------------------------------------------------
-REACH_TOL = 0.10         # m, phase 0 -> phase 1 switch distance to WAYPOINT_ABOVE
-PROGRESS_WEIGHT = 10.0
-PHASE_BONUS = 20.0       # one-off bonus when phase 0 is completed
+REACH_TOL = 0.08         # m, phase 0 -> phase 1 switch distance to WAYPOINT_ABOVE
+PROGRESS_WEIGHT = 8.0
+PHASE_BONUS = 400.0       # one-off bonus when phase 0 is completed
 F_TARGET = 10.0          # N, press force at which the force reward saturates (also "press success")
 F_MAX = 40.0             # N, forces above this are penalised (no slamming the button)
-FORCE_WEIGHT = 10.0      # max force reward per policy step
-ORI_WEIGHT = 3.0         # penalty per radian of tool orientation error
+FORCE_WEIGHT = 15.0      # max force reward per policy step
+ORI_WEIGHT = 6.0         # penalty per radian of tool orientation error
 
 OBS_DIM = 23             # 6 q + 6 q_dot + 3 ee + 3 target-ee + 1 phase + 3 orientation err + 1 force
 
@@ -243,7 +243,7 @@ class ButtonPressEnv:
     # --------------------------------------------------
     def reset(self):
         if self.start_at_waypoint_1:
-            q0 = self.q_above + np.random.uniform(-0.02, 0.02, 6)
+            q0 = self.q_above + np.array([-0.2, -0.2, -0.2, -0.2, -0.2, -0.2])
             self.phase = 1
         else:
             # q0 = Q_NEUTRAL + np.random.uniform(-0.1, 0.1, 6)
