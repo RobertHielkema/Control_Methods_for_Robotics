@@ -144,6 +144,10 @@ class PPOAgent:
             value.item(),
         )
         
+    @torch.no_grad()
+    def act_deterministic(self, obs):
+        obs_t = torch.as_tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
+        return self.network.get_mean_action(obs_t).squeeze(0).cpu().numpy()
 
     def store_reward_done(
         self, step: int, reward: float, done: bool

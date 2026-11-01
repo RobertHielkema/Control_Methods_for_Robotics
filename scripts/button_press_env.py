@@ -128,17 +128,18 @@ def orientation_error(q_current, q_desired):
 
 
 class ButtonPressEnv:
-    def __init__(self, start_at_waypoint_1: bool = True, realtime: bool = False):
+    def __init__(self, start_at_waypoint_1: bool = True, realtime: bool = False, save_torque_data: bool = False):
         """
         start_at_waypoint_1=True : episodes start above the button (phase 1, press only).
                                    Much easier, train this first.
         start_at_waypoint_1=False: episodes start near the neutral pose, the arm has to
                                    reach the waypoint above the button first (phase 0).
         realtime=True            : sleep every physics step (for watching/demos).
+        save_torque_data=True    : save joint torques to a file.
         """
         self.start_at_waypoint_1 = start_at_waypoint_1
         self.realtime = realtime
-
+        self.save_torque_data = save_torque_data
         self.robot = UR7e(block_gripper=False, neutral_joints=Q_NEUTRAL)
         self.robot_id = self.robot.robot_id
         self.ee_index = self.robot.robot_state.ee_index
@@ -168,6 +169,10 @@ class ButtonPressEnv:
         self.phase = 0
         self.t = 0
         self.prev_dist = 0.0
+        if self.save_torque_data:
+            self.torque_log = []
+            with open("torque_log.csv", "w") as f:
+                f.write("time_s," + ",".join(f"joint_{i}" for i in range(6)) + "\n")
 
     # --------------------------------------------------
     # Helpers
@@ -271,6 +276,10 @@ class ButtonPressEnv:
 
             desired_accel = self.Kp @ (q_target - q) - self.Kd @ q_dot
             torques = dyn.mass_matrix @ desired_accel + dyn.coriolis_vector + dyn.gravity_vector
+            if self.save_torque_data:
+                self.torque_log.append([self.t * 0.02] + list(torques))
+                with open("torque_log.csv", "a") as f:
+                    f.write(f"{self.t * 0.02}," + ",".join(f"{tau:.6f}" for tau in torques) + "\n")
 
             self.robot.control_torques(torques)   # clips to the motor limits
             self.robot.sim.step(realtime=self.realtime)

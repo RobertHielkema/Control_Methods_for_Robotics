@@ -79,3 +79,10 @@ class ActorCriticNetwork(nn.Module):
         value = self.critic_out(c).squeeze(-1)
 
         return action, log_prob, entropy, value
+
+    @torch.no_grad()
+    def get_mean_action(self, obs):
+        x = self.shared_act1(self.shared_fc1(obs))
+        x = self.shared_act2(self.shared_fc2(x))
+        a = self.actor_act1(self.actor_fc1(x))
+        return self.actor_mean(a)
