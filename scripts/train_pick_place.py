@@ -15,8 +15,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=2000)
     parser.add_argument("--start-phase", type=int, default=0, choices=[0, 1, 2],
-                        help="0: full task from the neutral pose, 1: start above the cube, "
-                             "2: start with the cube already grasped")
+                        help="0: full task, 1: start above cube, 2: start grasped")
     parser.add_argument("--save-dir", default="checkpoints_pick_place")
     parser.add_argument("--resume", default=None, help="checkpoint to continue training from")
     args = parser.parse_args()
@@ -24,7 +23,7 @@ def main():
     os.makedirs(args.save_dir, exist_ok=True)
     env = PickPlaceEnv(start_phase=args.start_phase, realtime=False)
 
-    n_steps = EPISODE_STEPS * 10          # about 10 episodes per PPO update (episodes can end early)
+    n_steps = EPISODE_STEPS * 10
     agent = PPOAgent(
         obs_dim=OBS_DIM,
         action_dim=6,
@@ -81,7 +80,7 @@ def main():
                         f"Clip frac: {upd['clip_fraction']:.3f}"
                     )
 
-                if done:                  # failure, success or time limit
+                if done:
                     break
 
             print(
@@ -96,7 +95,6 @@ def main():
             )
             log_file.flush()
 
-            # ---- checkpointing ----
             recent_returns.append(episode_return)
             if len(recent_returns) == recent_returns.maxlen:
                 mean_return = float(np.mean(recent_returns))
@@ -106,7 +104,6 @@ def main():
             if (ep + 1) % 50 == 0:
                 agent.save(os.path.join(args.save_dir, "last.pt"))
     finally:
-        # also runs on Ctrl-C, so stopping early still keeps the model
         agent.save(os.path.join(args.save_dir, "last.pt"))
         log_file.close()
         print(f"Saved checkpoints to {args.save_dir}/ (best.pt, last.pt)")

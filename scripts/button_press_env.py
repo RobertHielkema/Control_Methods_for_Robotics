@@ -13,37 +13,28 @@ import numpy as np
 import pybullet as p
 from ur_simulation.classic_control.robots.ur7e import UR7e
 
-# --------------------------------------------------
-# Control setup (same as the free-motion run that worked)
-# --------------------------------------------------
-ACTION_REPEAT = 20       # physics steps per policy step (1 kHz sim -> 50 Hz policy)
-ACTION_SCALE = 0.1       # max joint change (rad) per policy step
+ACTION_REPEAT = 20
+ACTION_SCALE = 0.1
 EPISODE_STEPS = 1200
 KP = 50.0
 KD = 20.0
 
-# --------------------------------------------------
-# Scene / task geometry (taken from button_environment_interaction.py)
-# --------------------------------------------------
 Q_NEUTRAL = np.array([1.57, -1.7, 2.4, -1.57, -1.57, -1.57])
 BUTTON_BASE_POS = [0.5, 0.4, 0.1]
-WAYPOINT_ABOVE = np.array([0.5, 0.4, 0.5])   # point above the button
-WAYPOINT_PRESS = np.array([0.5, 0.4, 0.2])   # point "in" the button
-TOOL_DOWN_QUAT = np.array([0.0, 0.7071, 0.0, 0.7071])  # (x, y, z, w), from your button script
-FINGER_WIDTH = 0.01      # closed fingers press like a single probe. Use 0.1 for the old open gripper.
+WAYPOINT_ABOVE = np.array([0.5, 0.4, 0.5])
+WAYPOINT_PRESS = np.array([0.5, 0.4, 0.2])
+TOOL_DOWN_QUAT = np.array([0.0, 0.7071, 0.0, 0.7071])
+FINGER_WIDTH = 0.01
 
-# --------------------------------------------------
-# Reward parameters (tune these)
-# --------------------------------------------------
-REACH_TOL = 0.08         # m, phase 0 -> phase 1 switch distance to WAYPOINT_ABOVE
+REACH_TOL = 0.08
 PROGRESS_WEIGHT = 8.0
-PHASE_BONUS = 400.0       # one-off bonus when phase 0 is completed
-F_TARGET = 10.0          # N, press force at which the force reward saturates (also "press success")
-F_MAX = 40.0             # N, forces above this are penalised (no slamming the button)
-FORCE_WEIGHT = 15.0      # max force reward per policy step
-ORI_WEIGHT = 6.0         # penalty per radian of tool orientation error
+PHASE_BONUS = 400.0
+F_TARGET = 10.0
+F_MAX = 40.0
+FORCE_WEIGHT = 15.0
+ORI_WEIGHT = 6.0
 
-OBS_DIM = 23             # 6 q + 6 q_dot + 3 ee + 3 target-ee + 1 phase + 3 orientation err + 1 force
+OBS_DIM = 23
 
 BUTTON_URDF = """<robot name="force_sensor_block">
   <link name="base_link">
@@ -82,7 +73,6 @@ BUTTON_URDF = """<robot name="force_sensor_block">
 
 
 def ensure_button_urdf(path: str = "sensor_block.urdf") -> str:
-    """Write the button URDF next to the script if it doesn't exist yet."""
     path = os.path.abspath(path)
     if not os.path.exists(path):
         with open(path, "w") as f:
@@ -90,9 +80,6 @@ def ensure_button_urdf(path: str = "sensor_block.urdf") -> str:
     return path
 
 
-# --------------------------------------------------
-# Quaternion helpers, all quaternions are (x, y, z, w)
-# --------------------------------------------------
 def quat_mul(a, b):
     ax, ay, az, aw = a
     bx, by, bz, bw = b
@@ -163,7 +150,6 @@ class ButtonPressEnv:
         self.Kp = np.diag(np.full(6, KP))
         self.Kd = np.diag(np.full(6, KD))
 
-        # Joint configuration above the button (IK, refined iteratively)
         self.q_above, self.ref_quat = self._solve_ik(WAYPOINT_ABOVE, TOOL_DOWN_QUAT)
 
         self.phase = 0
@@ -174,15 +160,11 @@ class ButtonPressEnv:
             with open("torque_log.csv", "w") as f:
                 f.write("time_s," + ",".join(f"joint_{i}" for i in range(6)) + "\n")
 
-    # --------------------------------------------------
-    # Helpers
-    # --------------------------------------------------
     @property
     def target(self):
         return WAYPOINT_ABOVE if self.phase == 0 else WAYPOINT_PRESS
 
     def _ee_pose(self):
-        # computeForwardKinematics=True so the pose is valid right after a reset
         s = p.getLinkState(self.robot_id, self.ee_index, computeForwardKinematics=True)
         return np.array(s[4]), np.array(s[5])
 
@@ -203,8 +185,6 @@ class ButtonPressEnv:
         return p.getJointState(self.button_id, 0)[2]
 
     def _solve_ik(self, position, quat, n_iter=100):
-        """PyBullet IK starts from the current joint state, so re-solving from the previous
-        solution converges to a much more accurate answer than a single call."""
         sol = None
         for _ in range(n_iter):
             sol = np.array(
@@ -217,8 +197,6 @@ class ButtonPressEnv:
         print(f"IK above button: position error {pos_err * 100:.2f} cm, orientation error {ori_err:.3f} rad")
         if pos_err > 0.02 or ori_err > 0.1:
             print("WARNING: IK did not converge well. Check WAYPOINT_ABOVE / TOOL_DOWN_QUAT.")
-        # Use the orientation that was actually achieved as the reference, so the
-        # start pose has zero orientation error by construction.
         return sol, achieved_quat
 
     def _obs(self, q, q_dot, ee, ori_vec, force):
@@ -234,18 +212,14 @@ class ButtonPressEnv:
 
     def _reward(self, dist, prev_dist, force, ori_angle):
         w_1, t_e = 0.001, 0.0001
-        r = -(w_1 * dist ** 2 + np.log(dist ** 2 + t_e))     # your original term
-        r += PROGRESS_WEIGHT * (prev_dist - dist)             # progress toward the current target
-        r -= ORI_WEIGHT * ori_angle                           # keep the tool pointing down
+        r = -(w_1 * dist ** 2 + np.log(dist ** 2 + t_e))
+        r += PROGRESS_WEIGHT * (prev_dist - dist)
+        r -= ORI_WEIGHT * ori_angle
         if self.phase == 1:
-            # reward pressing, saturating at F_TARGET, penalise slamming above F_MAX
             r += FORCE_WEIGHT * min(force, F_TARGET) / F_TARGET
             r -= FORCE_WEIGHT * min(max(force - F_MAX, 0.0) / F_MAX, 1.0)
         return r
 
-    # --------------------------------------------------
-    # Gym-style API
-    # --------------------------------------------------
     def reset(self):
         if self.start_at_waypoint_1:
             q0 = self.q_above + np.array([-0.2, -0.2, -0.2, -0.2, -0.2, -0.2])
@@ -285,7 +259,7 @@ class ButtonPressEnv:
             self.robot.sim.step(realtime=self.realtime)
             forces.append(self._contact_force())
 
-        force = float(np.mean(forces))            # mean over the substeps, contact forces are spiky
+        force = float(np.mean(forces))
 
         q, q_dot, ee, quat = self._read_state()
         dist = float(np.linalg.norm(self.target - ee))
@@ -297,11 +271,11 @@ class ButtonPressEnv:
         if self.phase == 0 and dist < REACH_TOL:
             self.phase = 1
             reward += PHASE_BONUS
-            dist = float(np.linalg.norm(self.target - ee))   # distance to the NEW target
+            dist = float(np.linalg.norm(self.target - ee))
         self.prev_dist = dist
 
         self.t += 1
-        done = self.t >= EPISODE_STEPS           # time limit only
+        done = self.t >= EPISODE_STEPS
 
         obs = self._obs(q, q_dot, ee, ori_vec, force)
         info = {

@@ -3,7 +3,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import argparse
 from collections import deque
-
 import numpy as np
 import torch
 
@@ -14,17 +13,15 @@ from button_press_env import ButtonPressEnv, OBS_DIM, EPISODE_STEPS
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=2000)
-    parser.add_argument("--full-motion", action="store_true",
-                        help="start near the neutral pose (reach the point above the button first). "
-                             "Default: start above the button, press only.")
+    parser.add_argument("--full-motion", action="store_true")
     parser.add_argument("--save-dir", default="checkpoints_button")
-    parser.add_argument("--resume", default=None, help="checkpoint to continue training from")
+    parser.add_argument("--resume", default=None)
     args = parser.parse_args()
 
     os.makedirs(args.save_dir, exist_ok=True)
     env = ButtonPressEnv(start_at_waypoint_1=not args.full_motion, realtime=False)
 
-    n_steps = EPISODE_STEPS * 10          # 10 whole episodes per PPO update
+    n_steps = EPISODE_STEPS * 10
     agent = PPOAgent(
         obs_dim=OBS_DIM,
         action_dim=6,
@@ -44,7 +41,6 @@ def main():
     )
     if args.resume:
         agent.load(args.resume)
-        print(f"Resumed from {args.resume}")
 
     log_path = os.path.join(args.save_dir, "episode_log.csv")
     log_file = open(log_path, "a" if args.resume else "w")
@@ -78,9 +74,7 @@ def main():
                     print(
                         f"UPDATE | Policy loss: {upd['policy_loss']:.4f} | "
                         f"Value loss: {upd['value_loss']:.4f} | "
-                        f"Entropy: {upd['entropy']:.4f} | "
-                        f"KL: {upd['approx_kl']:.5f} | "
-                        f"Clip frac: {upd['clip_fraction']:.3f}"
+                        f"Entropy: {upd['entropy']:.4f}"
                     )
 
             success = int(press_steps > 0)
@@ -95,7 +89,6 @@ def main():
             )
             log_file.flush()
 
-            # ---- checkpointing ----
             recent_returns.append(episode_return)
             if len(recent_returns) == recent_returns.maxlen:
                 mean_return = float(np.mean(recent_returns))
@@ -105,7 +98,6 @@ def main():
             if (ep + 1) % 50 == 0:
                 agent.save(os.path.join(args.save_dir, "last.pt"))
     finally:
-        # also runs on Ctrl-C, so stopping early still keeps the model
         agent.save(os.path.join(args.save_dir, "last.pt"))
         log_file.close()
         print(f"Saved checkpoints to {args.save_dir}/ (best.pt, last.pt)")

@@ -20,65 +20,50 @@ import numpy as np
 import pybullet as p
 from ur_simulation.classic_control.robots.ur7e import UR7e
 
-# --------------------------------------------------
-# Control setup (same as the button env that worked)
-# --------------------------------------------------
-ACTION_REPEAT = 20       # physics steps per policy step (1 kHz sim -> 50 Hz policy)
-ACTION_SCALE = 0.1       # max joint change (rad) per policy step
-EPISODE_STEPS = 1500     # policy steps per episode (scripted gripper holds are not counted)
+ACTION_REPEAT = 20
+ACTION_SCALE = 0.1
+EPISODE_STEPS = 1500
 KP = 50.0
 KD = 20.0
-DYNAMICS_EVERY = 1       # recompute M, C, g every N physics steps. 4 is ~4x faster, slightly less exact.
-START_NOISE = 0.0        # rad, random perturbation of the start pose. Raise to ~0.05 once it works.
+DYNAMICS_EVERY = 1
+START_NOISE = 0.0
 
-# --------------------------------------------------
-# Scene geometry (taken from classic_control_gripper_with_object.py)
-# --------------------------------------------------
 Q_NEUTRAL = np.array([1.57, -1.7, 2.4, -1.57, -1.57, -1.57])
-TOOL_DOWN_QUAT = np.array([0.0, 0.7071, 0.0, 0.7071])   # (x, y, z, w)
+TOOL_DOWN_QUAT = np.array([0.0, 0.7071, 0.0, 0.7071])
 
 CUBE_HALF = 0.01
 CUBE_MASS = 0.2
-CUBE_FRICTION = 1.0      # PyBullet default is 0.5, which makes a 2 cm cube slip out of the fingers
-CUBE_START = np.array([0.7, 0.5, CUBE_HALF + 0.001])    # resting on the floor
+CUBE_FRICTION = 1.0
+CUBE_START = np.array([0.7, 0.5, CUBE_HALF + 0.001])
 TRAY_POS = [-0.7, 0.5, 0.0]
 
 ABOVE_CUBE = np.array([0.7, 0.5, 0.3])
 GRASP = np.array([0.7, 0.5, 0.16])
 TRAY_ABOVE = np.array([-0.7, 0.5, 0.5])
 
-FINGER_OPEN = 0.1        # open_grasp() in your script
-FINGER_CLOSED = 0.01     # close_grasp() in your script
-GRIPPER_HOLD_STEPS = 25  # policy steps (0.5 s) the arm holds still while the gripper closes
-RELEASE_HOLD_STEPS = 40  # policy steps (0.8 s) the arm holds still while the cube falls and settles
+FINGER_OPEN = 0.1
+FINGER_CLOSED = 0.01
+GRIPPER_HOLD_STEPS = 25
+RELEASE_HOLD_STEPS = 40
 
-# --------------------------------------------------
-# Phases
-# --------------------------------------------------
 PHASE_NAMES = ["approach", "descend", "lift", "carry"]
 PHASE_TARGETS = [ABOVE_CUBE, GRASP, ABOVE_CUBE, TRAY_ABOVE]
-PHASE_TOL = [0.08, 0.02, 0.08, 0.08]     # m, distance at which the phase is completed
-ORI_WEIGHTS = [6.0, 6.0, 6.0, 1.0]       # carry is low: the tray may be too far for a vertical tool
+PHASE_TOL = [0.08, 0.02, 0.08, 0.08]
+ORI_WEIGHTS = [6.0, 6.0, 6.0, 1.0]
 N_PHASES = len(PHASE_NAMES)
 
-# --------------------------------------------------
-# Reward parameters (starting guesses, tune these)
-# --------------------------------------------------
 PROGRESS_WEIGHT = 8.0
-PHASE_BONUS = 400.0      # one-off bonus per completed phase
-PLACE_BONUS = 1000.0     # cube ended up inside the tray
-DROP_PENALTY = 300.0     # cube slipped out of the gripper, or was knocked away before the grasp
-HOLD_BONUS = 3.0         # per policy step while the cube is held and lifted
-LIFT_HEIGHT = 0.03       # m above the floor that counts as lifted
-DROP_TOL = 0.04          # m, allowed change of the cube-to-gripper offset after the grasp
-KNOCK_TOL = 0.05         # m, cube displacement before the grasp that counts as knocked away
+PHASE_BONUS = 400.0
+PLACE_BONUS = 1000.0
+DROP_PENALTY = 300.0
+HOLD_BONUS = 3.0
+LIFT_HEIGHT = 0.03
+DROP_TOL = 0.04
+KNOCK_TOL = 0.05
 
-OBS_DIM = 29             # 6 q + 6 q_dot + 3 ee + 3 target-ee + 4 phase + 3 orientation err + 3 cube-ee + 1 gripper
+OBS_DIM = 29
 
 
-# --------------------------------------------------
-# Quaternion helpers, all quaternions are (x, y, z, w)
-# --------------------------------------------------
 def quat_mul(a, b):
     ax, ay, az, aw = a
     bx, by, bz, bw = b
@@ -131,12 +116,9 @@ class PickPlaceEnv:
         self.tray_id = p.loadURDF("tray/traybox.urdf", basePosition=TRAY_POS, useFixedBase=True)
         self.cube_id = self._create_cube()
 
-        # Tray volume, used to decide whether the cube ended up inside
         aabb = p.getAABB(self.tray_id)
         self.tray_min = np.array(aabb[0])
         self.tray_max = np.array(aabb[1])
-        print(f"Tray AABB min {np.round(self.tray_min, 3)} max {np.round(self.tray_max, 3)} "
-              f"(cube counts as placed when it is inside this box)")
 
         q_min, q_max = [], []
         for idx in self.robot.arm_indices:
@@ -149,10 +131,9 @@ class PickPlaceEnv:
         self.Kp = np.diag(np.full(6, KP))
         self.Kd = np.diag(np.full(6, KD))
 
-        # Joint configurations for the waypoints (IK, refined iteratively). Errors are printed.
         self.q_above, self.ref_quat = self._solve_ik("above cube", ABOVE_CUBE)
         self.q_grasp, _ = self._solve_ik("grasp pose", GRASP)
-        self._solve_ik("above tray", TRAY_ABOVE)   # only reported
+        self._solve_ik("above tray", TRAY_ABOVE)
 
         self.phase = 0
         self.t = 0
@@ -163,9 +144,6 @@ class PickPlaceEnv:
         self.cube_start = CUBE_START.copy()
         self._set_gripper(False)
 
-    # --------------------------------------------------
-    # Scene helpers
-    # --------------------------------------------------
     def _create_cube(self):
         col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[CUBE_HALF] * 3)
         vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[CUBE_HALF] * 3, rgbaColor=[0.9, 0.2, 0.2, 1])
@@ -179,7 +157,6 @@ class PickPlaceEnv:
         return cube
 
     def _reset_cube(self):
-        # Your scripted scene spawns the cube at z=0.1 and lets it fall. Here it starts on the floor.
         p.resetBasePositionAndOrientation(self.cube_id, CUBE_START.tolist(), [0, 0, 0, 1])
         p.resetBaseVelocity(self.cube_id, [0, 0, 0], [0, 0, 0])
         self.cube_start = CUBE_START.copy()
@@ -198,15 +175,11 @@ class PickPlaceEnv:
         self.gripper_closed = closed
         self.robot.control_finger_width(FINGER_CLOSED if closed else FINGER_OPEN)
 
-    # --------------------------------------------------
-    # Robot helpers
-    # --------------------------------------------------
     @property
     def target(self):
         return PHASE_TARGETS[self.phase]
 
     def _ee_pose(self):
-        # computeForwardKinematics=True so the pose is valid right after a reset
         s = p.getLinkState(self.robot_id, self.ee_index, computeForwardKinematics=True)
         return np.array(s[4]), np.array(s[5])
 
@@ -217,8 +190,6 @@ class PickPlaceEnv:
         return q, q_dot, ee, quat
 
     def _solve_ik(self, name, position, quat=TOOL_DOWN_QUAT, n_iter=100):
-        """PyBullet IK starts from the current joint state, so re-solving from the previous
-        solution converges to a much more accurate answer than a single call."""
         sol = None
         for _ in range(n_iter):
             sol = np.array(self.robot.robot_model.get_inverse_kinematics(position, quat))[:6]
@@ -226,14 +197,11 @@ class PickPlaceEnv:
         ee, achieved_quat = self._ee_pose()
         pos_err = np.linalg.norm(ee - position)
         _, ori_err = orientation_error(achieved_quat, quat)
-        print(f"IK {name}: position error {pos_err * 100:.2f} cm, orientation error {ori_err:.3f} rad")
         if pos_err > 0.02 or ori_err > 0.1:
-            print(f"  WARNING: {name} is not reachable with the tool pointing down "
-                  f"(or IK did not converge). Check the waypoint.")
+            print(f"WARNING: IK for {name} did not converge well.")
         return sol, achieved_quat
 
     def _run_controller(self, q_target, n_substeps):
-        """Inverse dynamics controller tracking q_target for n_substeps physics steps."""
         dyn = None
         for i in range(n_substeps):
             if dyn is None or i % DYNAMICS_EVERY == 0:
@@ -244,14 +212,10 @@ class PickPlaceEnv:
             desired_accel = self.Kp @ (q_target - q) - self.Kd @ q_dot
             torques = dyn.mass_matrix @ desired_accel + dyn.coriolis_vector + dyn.gravity_vector
 
-            self.robot.control_torques(torques)   # clips to the motor limits
+            self.robot.control_torques(torques)
             self.robot.sim.step(realtime=self.realtime)
 
-    # --------------------------------------------------
-    # Scripted gripper routines
-    # --------------------------------------------------
     def _close_gripper(self):
-        """Hold the arm still, close the fingers, remember where the cube sits relative to the gripper."""
         q_hold = self.robot.robot_state.get_joint_angles().copy()
         self._set_gripper(True)
         self._run_controller(q_hold, GRIPPER_HOLD_STEPS * ACTION_REPEAT)
@@ -260,16 +224,12 @@ class PickPlaceEnv:
         self.grasped = True
 
     def _release(self):
-        """Hold the arm still, open the fingers, let the cube fall. Returns True if it ended up in the tray."""
         q_hold = self.robot.robot_state.get_joint_angles().copy()
         self._set_gripper(False)
         self.grasped = False
         self._run_controller(q_hold, RELEASE_HOLD_STEPS * ACTION_REPEAT)
         return self._cube_in_tray()
 
-    # --------------------------------------------------
-    # Observation / reward
-    # --------------------------------------------------
     def _obs(self, q, q_dot, ee, ori_vec, cube):
         phase_onehot = np.zeros(N_PHASES)
         phase_onehot[self.phase] = 1.0
@@ -286,14 +246,11 @@ class PickPlaceEnv:
 
     def _reward(self, dist, prev_dist, ori_angle):
         w_1, t_e = 0.001, 0.0001
-        r = -(w_1 * dist ** 2 + np.log(dist ** 2 + t_e))     # log distance term
-        r += PROGRESS_WEIGHT * (prev_dist - dist)             # progress toward the current waypoint
-        r -= ORI_WEIGHTS[self.phase] * ori_angle              # keep the tool pointing down
+        r = -(w_1 * dist ** 2 + np.log(dist ** 2 + t_e))
+        r += PROGRESS_WEIGHT * (prev_dist - dist)
+        r -= ORI_WEIGHTS[self.phase] * ori_angle
         return r
 
-    # --------------------------------------------------
-    # Gym-style API
-    # --------------------------------------------------
     def reset(self):
         self._reset_cube()
         self.grasped = False
@@ -314,7 +271,6 @@ class PickPlaceEnv:
         self.t = 0
 
         if self.start_phase == 2:
-            # let the fingers open and the arm settle, then grasp with the scripted routine
             self._run_controller(self.q_grasp.copy(), 10 * ACTION_REPEAT)
             self._close_gripper()
             self.phase = 2
@@ -341,15 +297,14 @@ class PickPlaceEnv:
         knocked = False
         placed = False
 
-        # ---- failure checks ----
         if self.grasped:
             offset_err = float(np.linalg.norm((cube - ee) - self.grasp_offset))
-            if offset_err > DROP_TOL:                      # cube slipped out of the gripper
+            if offset_err > DROP_TOL:
                 reward -= DROP_PENALTY
                 dropped = True
                 done = True
         elif self.phase <= 1:
-            if np.linalg.norm(cube[:2] - self.cube_start[:2]) > KNOCK_TOL:   # pushed the cube away
+            if np.linalg.norm(cube[:2] - self.cube_start[:2]) > KNOCK_TOL:
                 reward -= DROP_PENALTY
                 knocked = True
                 done = True
@@ -358,29 +313,27 @@ class PickPlaceEnv:
         if held:
             reward += HOLD_BONUS
 
-        # ---- phase transitions ----
         if not done and dist < PHASE_TOL[self.phase]:
             reward += PHASE_BONUS
-            if self.phase == 1:               # at the grasp pose: close the gripper, then lift
+            if self.phase == 1:
                 self._close_gripper()
                 self.phase = 2
-            elif self.phase == 3:             # above the tray: release, then the episode ends
+            elif self.phase == 3:
                 placed = self._release()
                 if placed:
                     reward += PLACE_BONUS
                 done = True
             else:
                 self.phase += 1
-            # the scripted routines moved the sim forward, refresh everything
             q, q_dot, ee, quat = self._read_state()
             cube = self._cube_pos()
             ori_vec, ori_angle = orientation_error(quat, self.ref_quat)
-            dist = float(np.linalg.norm(self.target - ee))   # distance to the NEW target
+            dist = float(np.linalg.norm(self.target - ee))
 
         self.prev_dist = dist
         self.t += 1
         if self.t >= EPISODE_STEPS:
-            done = True                       # time limit
+            done = True
 
         obs = self._obs(q, q_dot, ee, ori_vec, cube)
         info = {
