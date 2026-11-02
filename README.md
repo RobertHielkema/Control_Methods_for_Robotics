@@ -27,3 +27,5 @@ This repository benchmarks classical model-based controllers, reinforcement lear
 * **Model-Free / Learned**:
   * PPO (Proximal Policy Optimization) with Gaussian policy and Simulated Annealing parameter tuning
   * Lagrangian Neural Networks (LNN) trained via supervised learning on Inverse Dynamics trajectory data
+
+### Our Report
