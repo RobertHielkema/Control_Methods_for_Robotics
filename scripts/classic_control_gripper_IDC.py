@@ -1,3 +1,6 @@
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import argparse
 import time
 import numpy as np
@@ -21,7 +24,7 @@ def run():
     # Initialize simulation and create the scene
     robot = create_scene()
 
-    q_desired = np.array([-1.57, -1.2, 1.8, -1.57, -1.57, 0.0])
+    q_desired = np.array([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])
     q_dot_desired = np.zeros_like(q_desired)     # static setpoint -> zero desired velocity
     q_ddot_desired = np.zeros_like(q_desired)    # static setpoint -> zero desired acceleration
 
@@ -41,6 +44,8 @@ def run():
         q = robot.robot_state.get_joint_angles()
         q_dot = robot.robot_state.get_joint_velocities()
 
+        
+
         # Computed torque / inverse dynamics control:
         #   tau = M(q) [ q_ddot_d + Kp*(q_d - q) + Kd*(q_dot_d - q_dot) ] + C(q, q_dot) + g(q)
         position_error = q_desired - q
@@ -48,6 +53,10 @@ def run():
         desired_accel = q_ddot_desired + Kp @ position_error + Kd @ velocity_error
 
         torques = M @ desired_accel + C + g
+        torques = np.clip(torques, -500, 500)
+        with open("torques_IDC.csv", "a") as f:
+            f.write(",".join(map(str, torques)) + "\n")
+
 
         # Send torques
         robot.control_torques(torques)

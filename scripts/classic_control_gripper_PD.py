@@ -2,6 +2,8 @@ import argparse
 import time
 import numpy as np
 import pybullet as p
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ur_simulation.classic_control.robots.ur7e import UR7e
 from ur_simulation.pybullet import PyBullet
 from ur_simulation.classic_control.robot_state.pybullet_robot_state import JointType
@@ -66,6 +68,10 @@ def run():
         # Could be done simpler but I thought I'd stick with the matrix form to stay consistent with the lectures
         position_error = q_desired - q
         torques = Kp @ position_error - Kd @ q_dot + g
+
+        torques = np.clip(torques, -500, 500)
+        with open("torques_PD.csv", "a") as f:
+            f.write(",".join(map(str, torques)) + "\n")
 
         # Send torques
         robot.control_torques(torques)

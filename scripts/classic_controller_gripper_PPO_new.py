@@ -16,6 +16,8 @@ from math import sin, cos
 from PPO_agent import PPOAgent
 import random
 import time
+import numpy as np
+import imitation_generator as ig
 
 
 def create_scene():
@@ -56,7 +58,14 @@ def create_observation(q, ee_position, desired_position):
     observation = np.concatenate([q, ee_position, desired_position])
     return observation
 
+def wrap(a):
+    return np.arctan2(np.sin(a), np.cos(a))   # avoid 2π jumps
 
+def imitation_reward(q, q_ref_t, sigma=0.5):
+    MAX_ERR = 6 * np.pi**2
+    err = wrap(q_ref_t - q[:6])
+    # return 1 / (1 + np.sum(err**2))
+    return 10 - np.sum(np.abs(err))	
 
 # Unlike in gymnasium we dont get the luxury of a pre-made reward function
 def calculate_reward(ee_position, desired_position, contacts, current_q = None, prev_q= None, ee_movement = None):
@@ -92,9 +101,6 @@ def calculate_reward(ee_position, desired_position, contacts, current_q = None, 
     # if contacts is not None:
     #     reward -= 10
     return reward
-
-
-import numpy as np
 
 def normalize_observation(
     q,
@@ -214,21 +220,38 @@ def run():
     n_joints = 6
     Kp = np.diag(np.full(n_joints, 5))
     Kd = np.diag(np.full(n_joints, 2))
-    # desired_end_effector_pos_list = [[0.7, 0.5, 0.3], [0.7, 0.5, 0.16], [-0.7, 0.5, 0.5], [0.57, 0.35, 0.5], [-0.4, 0.3, 0.2],
-    #                                   [0.5, 0.65, 0.5], [-0.3, -0.5, 0.6], [-0.4, 0.3, 0.2], [0.2, 0.2, 0.1], [0.1, 0.3, 0.2]]
+    desired_end_effector_pos_list = [[0.7, 0.5, 0.3], [0.7, 0.5, 0.16], [-0.7, 0.5, 0.5], [0.57, 0.35, 0.5], [-0.4, 0.3, 0.2],
+                                      [0.5, 0.65, 0.5], [-0.3, -0.5, 0.6], [-0.4, 0.3, 0.2], [0.2, 0.2, 0.1], [0.1, 0.3, 0.2]]
     num_episodes = 1000
     debugpoint = None
+    q_ref = None
+    expert_ok = False
     for ep in range(num_episodes):
-
+        if q_ref is not None and not expert_ok:
+            print('test')
+            q_ref = None
         # reset robot position - now random
-        robot.set_joint_angles(np.array([random.uniform(-3.14159265, 3.14159265), random.uniform(-3.14159265, 0.0),
-                                         random.uniform(-3.14159265, 3.14159265), random.uniform(-3.14159265, 3.14159265),
-                                         random.uniform(-3.14159265, 3.14159265), random.uniform(-3.14159265, 3.14159265)]))
+        # robot.set_joint_angles(np.array([random.uniform(-3.14159265, 3.14159265), random.uniform(-3.14159265, 0.0),
+        #                                  random.uniform(-3.14159265, 3.14159265), random.uniform(-3.14159265, 3.14159265),
+        #                                  random.uniform(-3.14159265, 3.14159265), random.uniform(-3.14159265, 3.14159265)]))
         # generate a new point
-        desired_end_effector_pos = [random.uniform(-0.7, 0.7), random.uniform(-0.5, 0.5), random.uniform(0, 0.7)]
+        # desired_end_effector_pos = [random.uniform(-0.7, 0.7), random.uniform(-0.5, 0.5), random.uniform(0, 0.7)]
+        robot.set_joint_angles([1.57, -1.7, 2.4, -1.57, -1.57, -1.57])
+        desired_end_effector_pos = desired_end_effector_pos_list[0]
         if debugpoint is not None:
             p.removeUserDebugItem(debugpoint)
         debugpoint = p.addUserDebugPoints([desired_end_effector_pos], [[0, 0, 1]], pointSize=10)
+
+        if q_ref is None:
+            print('test2')
+            q_ref, expert_err = ig.impedance_imitation_generator(robot, desired_end_effector_pos, render=True)
+        expert_ok = expert_err < 0.03                   # ignore failed demos
+        w_imit = max(0.0, 1.0 - ep / 500) if expert_ok else 0.0   # anneal
+
+        ee_location = robot.robot_state.get_end_effector_position()
+        observation = create_observation(robot.robot_state.get_joint_angles(),
+                                        ee_location, desired_end_effector_pos)
+
         #desired_end_effector_pos= desired_end_effector_pos_list[ep] 
         print(f"Starting Episode Number:{ep}/{num_episodes}")
         print(f"New location: {desired_end_effector_pos}")
@@ -300,12 +323,18 @@ def run():
             # check for contacts between robot and plane
             contacts = p.getContactPoints(bodyA = robot_id, bodyB=plane_id, linkIndexA = 3)
             #print(contacts)
-            reward = calculate_reward(
+            r_task = calculate_reward(
                 ee_location,
                 desired_end_effector_pos,
                 contacts,
                 ee_movement = np.subtract(ee_location, old_ee_location)
             )
+            r_imit = imitation_reward(q, q_ref[-1])
+            # print('q:', q)
+            # print('q_ref', q_ref[min(step, len(q_ref) - 1)])
+            # print('q_ref_true', q_ref[-1] )
+            # reward = r_task + w_imit * 2.0 * r_imit
+            reward = r_imit
 
             # ----------------------------------------------
             # G. Check if episode is finished
@@ -346,6 +375,12 @@ def run():
                     f"Value loss: {info['value_loss']:.4f} | "
                     f"Entropy: {info['entropy']:.4f}"
                 )
+
+                print(f"expert_err={expert_err:.3f}  ok={expert_ok}  w_imit={w_imit:.2f}")
+
+                err = wrap(q_ref[-1] - q[:6])
+                print(f"step {step} | joint err {np.sum(np.abs(err))}")
+                print(err)
 
             # ----------------------------------------------
             # K. Print occasionally, NOT every step

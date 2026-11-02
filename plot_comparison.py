@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 
 # Generate images based on columns
-with open("torques_time_optimal.csv", "r") as f:
+with open("torques_with_object.csv", "r") as f:
     lines = f.readlines()
     time_optimal_data = [list(map(float, line.strip().split(","))) for line in lines]
 
