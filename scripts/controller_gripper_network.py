@@ -118,12 +118,7 @@ def lnn_inverse_dynamics(model, q, q_dot, desired_accel):
 
         Dqd = model.damping().unsqueeze(0) * qd_t
 
-        tau = (
-            torch.bmm(M, qdd_t.unsqueeze(-1)).squeeze(-1)
-            + Dqd
-            - h
-            + gradV
-        )
+        tau = (torch.bmm(M, qdd_t.unsqueeze(-1)).squeeze(-1) + Dqd- h + gradV)
 
     return tau.detach().cpu().numpy().reshape(6)
 
