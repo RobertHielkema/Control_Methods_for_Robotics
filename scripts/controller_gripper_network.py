@@ -157,7 +157,6 @@ def run():
     drop_performed = False
     while True:
         q_desired = np.array([0.0, -1.2, 1.8, -1.57, -1.57, 0.0])  # random desired joint angles for the robot arm
-        # Desired location for end effector
         desired_end_effector_pos = [[0.717, 0.44,  0.281]] #[0.7, 0.4, 0.1] [0.6, 0.4, 0.5] [0.717, 0.44,  0.281]
         # desired_end_effector_orientation = axisangle_to_q(90, [0, 1, 0])
         desired_end_effector_orientation = [0, 0.7071, 0, 0.7071]
@@ -171,8 +170,6 @@ def run():
 
         # Kp = np.diag([50, 50, 50, 30, 30, 30])
         # Kd = np.diag([14, 14, 14, 10, 10, 10])
-
-        # Compute inverse kinematics to get desired joint angles
         q_desired = robot.robot_model.get_inverse_kinematics(position=desired_end_effector_pos[i],
                                                              quaternion=desired_end_effector_orientation)
         q_desired = np.array(q_desired).tolist()
@@ -197,14 +194,10 @@ def run():
                 robot.robot_state.get_joint_velocities(),
                 dtype=np.float32,
             )[:6]
-
-            # Desired joint-space acceleration from the PD controller
             position_error = np.asarray(q_desired) - q
             velocity_error = q_dot_desired - q_dot
 
             desired_accel = q_ddot_desired + Kp @ position_error + Kd @ velocity_error
-
-            # Use the trained LNN to calculate the required torque
             torques = lnn_inverse_dynamics(
                 model, q, q_dot, desired_accel
             )
@@ -219,8 +212,6 @@ def run():
 
 
             robot.sim.step()
-
-            # Check actual Cartesian distance, not the angle between position vectors
             end_effector_position = np.asarray(
                 robot.robot_state.get_end_effector_position()
             )
